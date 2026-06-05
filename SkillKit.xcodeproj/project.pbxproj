@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		00FCCDB31742BCF2EF88D768 /* SkillDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A373F9CCEB98B407961DE06 /* SkillDetailView.swift */; };
+		0F599D9EF7904AB3D14519E5 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 37B540A363ADC91B128028A7 /* PrivacyInfo.xcprivacy */; };
 		1579648C7CFA56F1C49732A0 /* ClaudeCLIAgent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2264DA36FB045319CA009A3C /* ClaudeCLIAgent.swift */; };
 		1959127E5DD9FAB7C0A767AA /* ActivityRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BB04701DA4FBAFAD4BB2ECC /* ActivityRow.swift */; };
 		25EE832F088FD3AF159B8D14 /* OneShotResponseParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 207AC409D04D920462D60046 /* OneShotResponseParser.swift */; };
@@ -26,6 +27,7 @@
 		50B3F86BB9CAD6DDE536153E /* ComposeModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 166071A496D4B741CDD0E7E4 /* ComposeModel.swift */; };
 		5233EF32333C6B40153F545D /* SandboxBookmarkManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57B3B5C77474458B765E9E1A /* SandboxBookmarkManager.swift */; };
 		5434DEC944152A963E7AFF53 /* NewSkillSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 016DB8E6814CD5D9B724D168 /* NewSkillSheet.swift */; };
+		5BDE440AB183DD9EF1E8CE04 /* ReleaseReadinessView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C58B7FC3CDAF9DDDC589FDB /* ReleaseReadinessView.swift */; };
 		60044630A0374E2ADE0ECC1A /* AgentLogViewer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8113CA80AEDB641B54990242 /* AgentLogViewer.swift */; };
 		66C0C2374744B305AAB05C62 /* AgentFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25C5C663A873BA71832C6F8C /* AgentFactory.swift */; };
 		678832D2376705066132344E /* RegistrySheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = D000D3A13A7555681B3EB055 /* RegistrySheet.swift */; };
@@ -79,6 +81,7 @@
 		172F98F067A35DE28CAEC5E7 /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
 		189523CB90EBC7CD3F8C817A /* AgentSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentSession.swift; sourceTree = "<group>"; };
 		19D9FF038BF474FEB1D9C866 /* SkillListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkillListView.swift; sourceTree = "<group>"; };
+		1C58B7FC3CDAF9DDDC589FDB /* ReleaseReadinessView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReleaseReadinessView.swift; sourceTree = "<group>"; };
 		1D4299F1D53DEC13587A7F6B /* MarkdownRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownRenderer.swift; sourceTree = "<group>"; };
 		1E1FC406874A10D7A6B783B3 /* AppLogger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLogger.swift; sourceTree = "<group>"; };
 		1F6B422F226326AA7A65A2EF /* ToolBadge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolBadge.swift; sourceTree = "<group>"; };
@@ -91,6 +94,7 @@
 		2757DB65E4E979F9A01C9407 /* SkillPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkillPreviewView.swift; sourceTree = "<group>"; };
 		30C1322E1DB495417F902FE0 /* PlatformOption.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlatformOption.swift; sourceTree = "<group>"; };
 		317EC2FBBA6D2B20885F7853 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		37B540A363ADC91B128028A7 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		3F97D73FC3826CA646DBA48E /* SkillMetadataBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkillMetadataBar.swift; sourceTree = "<group>"; };
 		40B0C33AF3CB7B4E84753CE1 /* AgentTarget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentTarget.swift; sourceTree = "<group>"; };
 		44069AE7BD3B004F268DC134 /* SkillKit.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SkillKit.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -226,6 +230,7 @@
 			isa = PBXGroup;
 			children = (
 				77ABA46E2A4B2B345C792618 /* DiagnosticExporter.swift */,
+				1C58B7FC3CDAF9DDDC589FDB /* ReleaseReadinessView.swift */,
 				317EC2FBBA6D2B20885F7853 /* SettingsView.swift */,
 			);
 			path = Settings;
@@ -286,6 +291,7 @@
 			isa = PBXGroup;
 			children = (
 				519DFED0009AE78E86768ACF /* Assets.xcassets */,
+				37B540A363ADC91B128028A7 /* PrivacyInfo.xcprivacy */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -407,6 +413,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				4264316F22B9400884EB1754 /* Assets.xcassets in Resources */,
+				0F599D9EF7904AB3D14519E5 /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -450,6 +457,7 @@
 				25EE832F088FD3AF159B8D14 /* OneShotResponseParser.swift in Sources */,
 				D0C9EC5F17E145F4D9516462 /* PlatformOption.swift in Sources */,
 				678832D2376705066132344E /* RegistrySheet.swift in Sources */,
+				5BDE440AB183DD9EF1E8CE04 /* ReleaseReadinessView.swift in Sources */,
 				E9C2F606FF6D2E93DE878076 /* RemoteServer.swift in Sources */,
 				4AEE5E0B8BA0424BE61A1960 /* SSHService.swift in Sources */,
 				5233EF32333C6B40153F545D /* SandboxBookmarkManager.swift in Sources */,
@@ -482,6 +490,29 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin XCBuildConfiguration section */
+		44F36E72220AD5B52B63FEF9 /* AppStore */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = SkillKitIcon;
+				CODE_SIGN_ENTITLEMENTS = SkillKit/SkillKit.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Distribution";
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = SkillKit/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = alice.turcanu.com.SkillKit;
+				SDKROOT = macosx;
+				SWIFT_STRICT_CONCURRENCY = minimal;
+			};
+			name = AppStore;
+		};
 		6D732AC65476EFCBCF4436C9 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -623,6 +654,62 @@
 			};
 			name = Debug;
 		};
+		CB8007B9749D7E19E2A6628D /* AppStore */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = AppStore;
+		};
 		E4493C9BA2D2797C993A2DB1 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -730,6 +817,7 @@
 		04350599D03E1B4BF0009480 /* Build configuration list for PBXNativeTarget "SkillKit" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
+				44F36E72220AD5B52B63FEF9 /* AppStore */,
 				6D732AC65476EFCBCF4436C9 /* Debug */,
 				F04DD25D98C6661E4391B25A /* LocalRelease */,
 				E4493C9BA2D2797C993A2DB1 /* Release */,
@@ -740,6 +828,7 @@
 		34884DD1BD2A3A82A5102603 /* Build configuration list for PBXProject "SkillKit" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
+				CB8007B9749D7E19E2A6628D /* AppStore */,
 				A5335F9521AFDEDEC2A6B575 /* Debug */,
 				ED954EAC4933BBDAF932B40C /* LocalRelease */,
 				7FE8544B5FADAEEDD2214287 /* Release */,

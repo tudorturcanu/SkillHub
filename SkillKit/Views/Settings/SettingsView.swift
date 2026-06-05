@@ -7,7 +7,7 @@ extension Notification.Name {
 // MARK: - Settings Tab Definition
 
 enum SettingsTab: String, CaseIterable, Identifiable {
-    case platforms, scanDirs, about
+    case platforms, scanDirs, release, about
 
     var id: String { rawValue }
 
@@ -15,6 +15,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         switch self {
         case .platforms: "Platforms"
         case .scanDirs: "Scan Directories"
+        case .release: "Release"
         case .about: "About"
         }
     }
@@ -23,6 +24,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         switch self {
         case .platforms: "checkmark.rectangle.stack"
         case .scanDirs: "folder.badge.gearshape"
+        case .release: "shippingbox"
         case .about: "info.circle"
         }
     }
@@ -72,6 +74,8 @@ struct SettingsView: View {
             platformSettings
         case .scanDirs:
             scanSettings
+        case .release:
+            ReleaseReadinessView()
         case .about:
             aboutView
         }

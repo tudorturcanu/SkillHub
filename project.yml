@@ -1,6 +1,7 @@
 name: SkillKit
 options:
   bundleIdPrefix: alice.turcanu.com
+  defaultConfig: Debug
   deploymentTarget:
     macOS: "15.0"
   createIntermediateGroups: true
@@ -9,6 +10,7 @@ options:
 configs:
   Debug: debug
   Release: release
+  AppStore: release
   LocalRelease: release
 
 packages:
@@ -47,5 +49,7 @@ targets:
       configs:
         Release:
           CODE_SIGN_IDENTITY: "Developer ID Application"
+        AppStore:
+          CODE_SIGN_IDENTITY: "Apple Distribution"
         LocalRelease:
           CODE_SIGN_ENTITLEMENTS: SkillKit/SkillKitLocalRelease.entitlements

@@ -26,9 +26,5 @@
 	<string>SkillKitIcon</string>
 	<key>NSHumanReadableCopyright</key>
 	<string>Copyright © 2026 Turcanu. All rights reserved.</string>
-	<key>SUFeedURL</key>
-	<string>https://skillkit.md/appcast.xml</string>
-	<key>SUPublicEDKey</key>
-	<string>I1gi82QlV84mZZXMzxJyVMFKpDCmcatBYVSGcq1nJgE=</string>
 </dict>
 </plist>
