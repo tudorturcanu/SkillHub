@@ -1,0 +1,24 @@
+{
+  "originHash" : "5a454cd32664614c17bc1d2efcaca9e5d47778fed9a51fc962fa6e37f6a74ea7",
+  "pins" : [
+    {
+      "identity" : "cmark-gfm",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/brokenhandsio/cmark-gfm.git",
+      "state" : {
+        "revision" : "e97450a77a40f12b4f88f95891621c3b5d8669de",
+        "version" : "2.1.0"
+      }
+    },
+    {
+      "identity" : "highlightr",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/raspu/Highlightr",
+      "state" : {
+        "revision" : "05e7fcc63b33925cd0c1faaa205cdd5681e7bbef",
+        "version" : "2.3.0"
+      }
+    }
+  ],
+  "version" : 3
+}
