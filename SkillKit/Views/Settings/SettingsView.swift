@@ -1,4 +1,5 @@
 import SwiftUI
+import SwiftData
 
 extension Notification.Name {
     static let customScanPathsChanged = Notification.Name("customScanPathsChanged")
@@ -7,7 +8,7 @@ extension Notification.Name {
 // MARK: - Settings Tab Definition
 
 enum SettingsTab: String, CaseIterable, Identifiable {
-    case platforms, scanDirs, release, about
+    case platforms, scanDirs, release, appearance, data, about
 
     var id: String { rawValue }
 
@@ -16,6 +17,8 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .platforms: "Platforms"
         case .scanDirs: "Scan Directories"
         case .release: "Release"
+        case .appearance: "Appearance"
+        case .data: "Data Management"
         case .about: "About"
         }
     }
@@ -25,6 +28,8 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .platforms: "checkmark.rectangle.stack"
         case .scanDirs: "folder.badge.gearshape"
         case .release: "shippingbox"
+        case .appearance: "paintpalette"
+        case .data: "externaldrive"
         case .about: "info.circle"
         }
     }
@@ -36,6 +41,9 @@ struct SettingsView: View {
     private static let logger = AppLogger.settings
 
     @AppStorage("didCompleteOnboarding") private var didCompleteOnboarding = true
+    @AppStorage("appColorScheme") private var appColorScheme: AppColorScheme = .system
+    @Environment(\.modelContext) private var modelContext
+    @Query private var skills: [Skill]
     @State private var selectedTab: SettingsTab = .platforms
     @State private var customPaths: [String] = []
     @State private var bookmarkRefreshTrigger = false
@@ -76,6 +84,10 @@ struct SettingsView: View {
             scanSettings
         case .release:
             ReleaseReadinessView()
+        case .appearance:
+            appearanceSettings
+        case .data:
+            dataSettings
         case .about:
             aboutView
         }
@@ -258,6 +270,52 @@ struct SettingsView: View {
                 Self.logger.info("Refresh trigger toggled.")
             }
         }
+    }
+
+    private var appearanceSettings: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Appearance")
+                .font(.headline)
+            
+            Text("Customize the look and feel of SkillKit.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            
+            Form {
+                Picker("Theme", selection: $appColorScheme) {
+                    ForEach(AppColorScheme.allCases) { scheme in
+                        Text(scheme.rawValue).tag(scheme)
+                    }
+                }
+                .pickerStyle(.radioGroup)
+            }
+            .padding()
+            .background(Color(NSColor.controlBackgroundColor))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+        }
+        .padding()
+    }
+
+    private var dataSettings: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Data Management")
+                .font(.headline)
+            
+            Text("Export or import all your skills to a JSON file.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            
+            HStack(spacing: 16) {
+                Button("Export Data...") {
+                    try? SkillExporter.shared.export(skills: skills)
+                }
+                
+                Button("Import Data...") {
+                    try? SkillExporter.shared.importData(modelContext: modelContext)
+                }
+            }
+        }
+        .padding()
     }
 
     private var aboutView: some View {

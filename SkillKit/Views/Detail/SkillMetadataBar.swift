@@ -6,6 +6,7 @@ struct SkillMetadataBar: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \SkillCollection.sortOrder) private var allCollections: [SkillCollection]
     @State private var showingCollectionPicker = false
+    @State private var showingValidationIssues = false
 
     var body: some View {
         HStack(spacing: 16) {
@@ -42,6 +43,10 @@ struct SkillMetadataBar: View {
             Text(formattedSize)
                 .font(.caption)
                 .foregroundStyle(.secondary)
+
+            Divider().frame(height: 16)
+
+            validationStatusButton
 
             Divider().frame(height: 16)
 
@@ -98,6 +103,24 @@ struct SkillMetadataBar: View {
         return [skill.filePath] + otherPaths
     }
 
+    @ViewBuilder
+    private var validationStatusButton: some View {
+        let warnings = skill.validationIssues.filter { $0.severity == .warning }
+
+        Button {
+            showingValidationIssues.toggle()
+        } label: {
+            Image(systemName: warnings.isEmpty ? "checkmark.seal" : "exclamationmark.triangle.fill")
+                .font(.caption)
+                .foregroundStyle(warnings.isEmpty ? .green : .orange)
+        }
+        .buttonStyle(.plain)
+        .help(warnings.isEmpty ? "No validation warnings" : "\(warnings.count) validation warning\(warnings.count == 1 ? "" : "s")")
+        .popover(isPresented: $showingValidationIssues) {
+            ValidationIssuesView(issues: skill.validationIssues)
+        }
+    }
+
     private var collectionPickerContent: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text("Collections").font(.headline).padding(.bottom, 4)
@@ -130,5 +153,39 @@ struct SkillMetadataBar: View {
         }
         .padding()
         .frame(width: 200)
+    }
+}
+
+private struct ValidationIssuesView: View {
+    let issues: [SkillValidationIssue]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Validation")
+                .font(.headline)
+
+            if issues.isEmpty {
+                Label("No warnings", systemImage: "checkmark.seal")
+                    .foregroundStyle(.green)
+            } else {
+                ForEach(issues) { issue in
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: issue.severity.icon)
+                            .foregroundStyle(issue.severity == .warning ? .orange : .secondary)
+                            .frame(width: 16)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(issue.title)
+                                .font(.subheadline.weight(.semibold))
+                            Text(issue.message)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+        }
+        .padding()
+        .frame(width: 280, alignment: .leading)
     }
 }

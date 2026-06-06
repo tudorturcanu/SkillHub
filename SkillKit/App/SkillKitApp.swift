@@ -6,6 +6,7 @@ struct SkillKitApp: App {
     @State private var appState = AppState()
     @AppStorage("AgentDebugLogging") private var debugLoggingEnabled = false
     @AppStorage("didCompleteOnboarding") private var didCompleteOnboarding = false
+    @AppStorage("appColorScheme") private var appColorScheme: AppColorScheme = .system
 
     init() {
         UserDefaults.standard.register(defaults: [
@@ -33,8 +34,10 @@ struct SkillKitApp: App {
             if didCompleteOnboarding {
                 ContentView()
                     .environment(appState)
+                    .preferredColorScheme(appColorScheme.colorScheme)
             } else {
                 OnboardingView(didCompleteOnboarding: $didCompleteOnboarding)
+                    .preferredColorScheme(appColorScheme.colorScheme)
             }
         }
         .modelContainer(sharedModelContainer)

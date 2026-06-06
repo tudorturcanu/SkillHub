@@ -3,13 +3,11 @@ import Foundation
 
 enum ItemKind: String, Codable, CaseIterable {
     case skill
-    case agent
     case rule
 
     var displayName: String {
         switch self {
         case .skill: "Skills"
-        case .agent: "Agents"
         case .rule: "Rules"
         }
     }
@@ -17,7 +15,6 @@ enum ItemKind: String, Codable, CaseIterable {
     var singularName: String {
         switch self {
         case .skill: "Skill"
-        case .agent: "Agent"
         case .rule: "Rule"
         }
     }
@@ -25,7 +22,6 @@ enum ItemKind: String, Codable, CaseIterable {
     var icon: String {
         switch self {
         case .skill: "doc.text"
-        case .agent: "person.crop.rectangle"
         case .rule: "list.bullet.rectangle"
         }
     }
@@ -53,7 +49,6 @@ extension Skill {
 
     var displayTypeName: String {
         switch itemKind {
-        case .agent: "Agent"
         case .rule: "Rule"
         case .skill: "Skill"
         }

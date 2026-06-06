@@ -39,11 +39,11 @@ struct OnboardingView: View {
         VStack(alignment: .leading, spacing: 28) {
             VStack(alignment: .leading, spacing: 18) {
                 Text("Choose your platforms")
-                    .font(.system(size: 44, weight: .bold))
+                    .font(.system(size: 32, weight: .bold))
                     .foregroundStyle(.primary)
 
                 Text("You can use SkillKit with Codex, Claude, Gemini, GitHub Copilot, or multiple platforms. You can change this later in Settings.")
-                    .font(.system(size: 22))
+                    .font(.system(size: 15))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: 960, alignment: .leading)
@@ -73,11 +73,11 @@ struct OnboardingView: View {
             VStack(alignment: .leading, spacing: 26) {
                 VStack(alignment: .leading, spacing: 12) {
                     Text("Set up folders")
-                        .font(.system(size: 44, weight: .bold))
+                        .font(.system(size: 32, weight: .bold))
                         .foregroundStyle(.primary)
 
                     Text("Grant SkillKit access to each selected platform folder so it can scan, install, and sync your skills.")
-                        .font(.system(size: 22))
+                        .font(.system(size: 15))
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                         .frame(maxWidth: 960, alignment: .leading)
@@ -252,17 +252,17 @@ private struct PlatformToggleRow: View {
         Button(action: action) {
             HStack(alignment: .top, spacing: 10) {
                 Image(systemName: isSelected ? "checkmark.square.fill" : "square")
-                    .font(.system(size: 28, weight: .semibold))
+                    .font(.system(size: 20, weight: .semibold))
                     .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
-                    .frame(width: 32, height: 32)
+                    .frame(width: 24, height: 24)
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(option.displayName)
-                        .font(.system(size: 24, weight: .bold))
+                        .font(.system(size: 18, weight: .bold))
                         .foregroundStyle(.primary)
 
                     Text(option.detail)
-                        .font(.system(size: 18))
+                        .font(.system(size: 14))
                         .foregroundStyle(.secondary)
                 }
             }
@@ -286,35 +286,37 @@ private struct FolderAccessCard: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 12) {
                 Text(title)
-                    .font(.system(size: 24, weight: .bold))
+                    .font(.system(size: 18, weight: .bold))
                     .foregroundStyle(.primary)
 
                 Text(statusTitle)
-                    .font(.system(size: 16, weight: .bold))
+                    .font(.system(size: 12, weight: .bold))
                     .foregroundStyle(statusColor)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 8)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
                     .background(statusBackground)
                     .clipShape(Capsule())
             }
 
             Text(isGranted ? path : "No folder selected")
-                .font(.system(size: 22))
+                .font(.system(size: 15))
                 .foregroundStyle(isGranted ? Color.secondary : Color.red)
+                .lineLimit(1)
+                .truncationMode(.middle)
 
-            Text(isGranted ? "Usually `\(expectedPath)`." : expectedPath)
-                .font(.system(size: 17))
+            Text(isGranted && !expectedPath.starts(with: "Choose") ? "Usually `\(expectedPath)`." : expectedPath)
+                .font(.system(size: 13))
                 .foregroundStyle(.secondary)
 
             if !isGranted {
                 Text("SkillKit cannot scan, install, or sync this destination until you grant access.")
-                    .font(.system(size: 17))
+                    .font(.system(size: 13))
                     .foregroundStyle(.red)
             }
 
             Button(buttonTitle, action: action)
                 .buttonStyle(.borderedProminent)
-                .controlSize(.large)
+                .controlSize(.regular)
         }
         .padding(28)
         .frame(maxWidth: isRequired ? 620 : 360, alignment: .leading)

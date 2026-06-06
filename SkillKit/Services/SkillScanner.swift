@@ -50,15 +50,15 @@ final class SkillScanner {
     /// Project-level paths to probe inside each project directory
     private static let projectProbes: [(subpath: String, tool: ToolSource, kind: ItemKind)] = [
         (".claude/skills", .claude, .skill),
-        (".claude/agents", .claude, .agent),
+        (".claude/agents", .claude, .skill),
         (".cursor/skills", .cursor, .skill),
         (".cursor/rules", .cursor, .rule),
-        (".cursor/agents", .cursor, .agent),
+        (".cursor/agents", .cursor, .skill),
         (".codex/skills", .codex, .skill),
-        (".codex/agents", .codex, .agent),
+        (".codex/agents", .codex, .skill),
         (".windsurf/rules", .windsurf, .rule),
         (".github", .copilot, .skill),
-        (".github/agents", .copilot, .agent),
+        (".github/agents", .copilot, .skill),
         (".config/amp/skills", .amp, .skill),
         (".opencode/skills", .opencode, .skill),
         (".hermes/skills", .hermes, .skill),
@@ -92,8 +92,11 @@ final class SkillScanner {
     private static func collectAllSkills(customPaths: [String], includePlugins: Bool) -> [ScannedSkillData] {
         var results: [ScannedSkillData] = []
         let sotDir = SkillKitSettings.sotDir
+        
+        AppLogger.scanning.notice("Starting collectAllSkills. sotDir: \(sotDir), customPaths count: \(customPaths.count)")
 
-        SandboxBookmarkManager.resolveAndAccess(path: sotDir) { _ in
+        SandboxBookmarkManager.resolveAndAccess(path: sotDir) { url in
+            AppLogger.scanning.notice("Successfully accessed sotDir: \(url.path)")
             for tool in ToolSource.allCases where tool != .custom {
                 guard !Task.isCancelled else { return }
                 guard tool.isInstalled else {
@@ -105,7 +108,7 @@ final class SkillScanner {
                 }
                 for path in tool.globalAgentPaths {
                     let url = URL(fileURLWithPath: path)
-                    collectFromDirectory(url, toolSource: tool, isGlobal: true, kind: .agent, into: &results)
+                    collectFromDirectory(url, toolSource: tool, isGlobal: true, kind: .skill, into: &results)
                 }
                 for path in tool.globalRulePaths {
                     let url = URL(fileURLWithPath: path)
@@ -223,9 +226,9 @@ final class SkillScanner {
         let fm = FileManager.default
 
         var isDir: ObjCBool = false
-        guard fm.fileExists(atPath: directory.path, isDirectory: &isDir) else { return }
-
-        guard isDir.boolValue else { return }
+        let exists = fm.fileExists(atPath: directory.path, isDirectory: &isDir)
+        AppLogger.scanning.notice("Probing directory: \(directory.path), exists: \(exists), isDir: \(isDir.boolValue)")
+        guard exists, isDir.boolValue else { return }
 
         // Enumerate through the resolved directory so symlinked directories are traversed.
         let resolvedDirectory = directory.resolvingSymlinksInPath()
@@ -267,8 +270,8 @@ final class SkillScanner {
                     if let data = collectSkillData(at: agentsFile, toolSource: toolSource, isDirectory: true, isGlobal: isGlobal, kind: kind) {
                         results.append(data)
                     }
-                } else if kind == .agent, let agentFile = preferredAgentFile(in: rawItem) {
-                    let remappedAgentFile = item.appendingPathComponent(agentFile.lastPathComponent)
+                } else if let fallbackFile = preferredAgentFile(in: rawItem) {
+                    let remappedAgentFile = item.appendingPathComponent(fallbackFile.lastPathComponent)
                     if let data = collectSkillData(at: remappedAgentFile, toolSource: toolSource, isDirectory: true, isGlobal: isGlobal, kind: kind) {
                         results.append(data)
                     }
@@ -483,6 +486,7 @@ final class SkillScanner {
     /// Apply collected results to SwiftData. Must be called on main thread.
     @MainActor
     private func applyResults(_ results: [ScannedSkillData]) {
+        AppLogger.scanning.notice("applyResults called with \(results.count) results")
         let groupedResults = Dictionary(grouping: results, by: \.resolvedPath)
         let descriptor = FetchDescriptor<Skill>()
         let allSkills = (try? modelContext.fetch(descriptor)) ?? []

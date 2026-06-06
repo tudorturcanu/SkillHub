@@ -156,7 +156,7 @@ struct DashboardView: View {
             HStack(spacing: 16) {
                 ActionButton(
                     title: "Create Skill",
-                    description: "Start a reusable agent instruction",
+                    description: "Start a reusable skill instruction",
                     icon: "plus.circle.fill",
                     color: Color.accentColor
                 ) {
@@ -169,7 +169,7 @@ struct DashboardView: View {
                     icon: "globe.americas.fill",
                     color: Color.teal
                 ) {
-                    appState.showingRegistrySheet = true
+                    appState.sidebarFilter = .marketplace
                 }
             }
         }
@@ -238,6 +238,8 @@ private struct StatCard: View {
     let value: String
     let icon: String
     let gradient: Gradient
+    
+    @State private var isHovered = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -263,6 +265,11 @@ private struct StatCard: View {
             RoundedRectangle(cornerRadius: 12)
                 .stroke(Color.primary.opacity(0.05), lineWidth: 1)
         )
+        .scaleEffect(isHovered ? 1.02 : 1.0)
+        .animation(.spring(response: 0.3, dampingFraction: 0.6), value: isHovered)
+        .onHover { hovering in
+            isHovered = hovering
+        }
     }
 }
 
@@ -272,6 +279,8 @@ private struct ActionButton: View {
     let icon: String
     let color: Color
     let action: () -> Void
+    
+    @State private var isHovered = false
 
     var body: some View {
         Button(action: action) {
@@ -297,6 +306,11 @@ private struct ActionButton: View {
                 RoundedRectangle(cornerRadius: 10)
                     .stroke(Color.primary.opacity(0.05), lineWidth: 1)
             )
+            .scaleEffect(isHovered ? 1.02 : 1.0)
+            .animation(.spring(response: 0.3, dampingFraction: 0.6), value: isHovered)
+            .onHover { hovering in
+                isHovered = hovering
+            }
         }
         .buttonStyle(.plain)
     }

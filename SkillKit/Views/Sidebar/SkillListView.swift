@@ -28,18 +28,18 @@ struct SkillListView: View {
     @Query(sort: \SkillCollection.name) private var allCollections: [SkillCollection]
     @State private var activeAlert: ActiveAlert?
 
-    private var filteredSkills: [Skill] {
+    private var baseFilteredSkills: [Skill] {
         var result = allSkills
 
         switch appState.sidebarFilter {
-        case .dashboard:
+        case .dashboard, .marketplace:
             result = []
         case .allSkills:
             result = result.filter { $0.itemKind == .skill }
-        case .allAgents:
-            result = result.filter { $0.itemKind == .agent }
         case .allRules:
             result = result.filter { $0.itemKind == .rule }
+        case .needsReview:
+            result = result.filter(\.hasValidationWarnings)
         case .favorites:
             result = result.filter { $0.isFavorite }
         case .tool(let tool):
@@ -55,23 +55,98 @@ struct SkillListView: View {
             result = result.filter { $0.remoteServer?.id == serverID }
         }
 
+        switch appState.skillQuickFilter {
+        case .all:
+            break
+        case .favorites:
+            result = result.filter(\.isFavorite)
+        case .needsReview:
+            result = result.filter(\.hasValidationWarnings)
+        case .editable:
+            result = result.filter { !$0.isReadOnly }
+        case .readOnly:
+            result = result.filter(\.isReadOnly)
+        case .local:
+            result = result.filter { !$0.isRemote }
+        case .remote:
+            result = result.filter(\.isRemote)
+        }
+
         if !appState.searchText.isEmpty {
-            result = result.filter {
-                $0.name.localizedCaseInsensitiveContains(appState.searchText) ||
-                $0.skillDescription.localizedCaseInsensitiveContains(appState.searchText) ||
-                $0.content.localizedCaseInsensitiveContains(appState.searchText)
-            }
+            result = result.filter { matchesSearch($0) }
         }
 
         return result
     }
 
+    private var filteredSkills: [Skill] {
+        switch appState.skillSortOption {
+        case .nameAscending:
+            return baseFilteredSkills.sorted { lhs, rhs in
+                lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
+            }
+        case .modifiedNewest:
+            return baseFilteredSkills.sorted { $0.fileModifiedDate > $1.fileModifiedDate }
+        case .modifiedOldest:
+            return baseFilteredSkills.sorted { $0.fileModifiedDate < $1.fileModifiedDate }
+        case .platform:
+            return baseFilteredSkills.sorted { lhs, rhs in
+                let platformComparison = lhs.toolSource.displayName.localizedStandardCompare(rhs.toolSource.displayName)
+                if platformComparison == .orderedSame {
+                    return lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
+                }
+                return platformComparison == .orderedAscending
+            }
+        case .warningsFirst:
+            return baseFilteredSkills.sorted { lhs, rhs in
+                if lhs.hasValidationWarnings != rhs.hasValidationWarnings {
+                    return lhs.hasValidationWarnings
+                }
+                return lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
+            }
+        }
+    }
+
+    private var scopedTotalCount: Int {
+        let savedSearch = appState.searchText
+        guard !savedSearch.isEmpty || appState.skillQuickFilter != .all else {
+            return baseFilteredSkills.count
+        }
+
+        var result = allSkills
+        switch appState.sidebarFilter {
+        case .dashboard, .marketplace:
+            result = []
+        case .allSkills:
+            result = result.filter { $0.itemKind == .skill }
+        case .allRules:
+            result = result.filter { $0.itemKind == .rule }
+        case .needsReview:
+            result = result.filter(\.hasValidationWarnings)
+        case .favorites:
+            result = result.filter(\.isFavorite)
+        case .tool(let tool):
+            result = result.filter { $0.toolSources.contains(tool) }
+            if let kind = appState.toolKindFilter {
+                result = result.filter { $0.itemKind == kind }
+            }
+        case .collection(let collName):
+            result = result.filter { skill in
+                skill.collections.contains { $0.name == collName }
+            }
+        case .server(let serverID):
+            result = result.filter { $0.remoteServer?.id == serverID }
+        }
+        return result.count
+    }
+
     private var title: String {
         switch appState.sidebarFilter {
         case .dashboard: "Dashboard"
+        case .marketplace: "Marketplace"
         case .allSkills: "Skills"
-        case .allAgents: "Agents"
         case .allRules: "Rules"
+        case .needsReview: "Needs Review"
         case .favorites: "Favorites"
         case .tool(let tool): tool.displayName
         case .collection(let name): name
@@ -80,10 +155,14 @@ struct SkillListView: View {
         }
     }
 
+    private var isControlBarVisible: Bool {
+        appState.sidebarFilter != .dashboard && appState.sidebarFilter != .marketplace
+    }
+
     /// Whether the current filter shows mixed item types (skills and agents together)
     private var showsTypeBadge: Bool {
         switch appState.sidebarFilter {
-        case .dashboard, .allSkills, .allAgents, .allRules: false
+        case .dashboard, .allSkills, .allRules: false
         case .tool: appState.toolKindFilter == nil
         default: true
         }
@@ -93,6 +172,35 @@ struct SkillListView: View {
         guard case .tool(let tool) = appState.sidebarFilter else { return [] }
         let kinds = Set(allSkills.filter { $0.toolSources.contains(tool) }.map(\.itemKind))
         return ItemKind.allCases.filter { kinds.contains($0) }
+    }
+
+    private func matchesSearch(_ skill: Skill) -> Bool {
+        let searchText = appState.searchText
+        switch appState.skillSearchScope {
+        case .all:
+            return skill.name.localizedCaseInsensitiveContains(searchText) ||
+                skill.skillDescription.localizedCaseInsensitiveContains(searchText) ||
+                skill.content.localizedCaseInsensitiveContains(searchText) ||
+                skill.filePath.localizedCaseInsensitiveContains(searchText) ||
+                skill.frontmatter.values.contains { $0.localizedCaseInsensitiveContains(searchText) }
+        case .title:
+            return skill.name.localizedCaseInsensitiveContains(searchText)
+        case .description:
+            return skill.skillDescription.localizedCaseInsensitiveContains(searchText)
+        case .content:
+            return skill.content.localizedCaseInsensitiveContains(searchText)
+        case .path:
+            return skill.filePath.localizedCaseInsensitiveContains(searchText)
+        case .metadata:
+            return skill.frontmatter.values.contains { $0.localizedCaseInsensitiveContains(searchText) }
+        }
+    }
+
+    private func updateSelectionForCurrentFilter() {
+        if let selected = appState.selectedSkill, filteredSkills.contains(selected) {
+            return
+        }
+        appState.selectedSkill = filteredSkills.first
     }
 
     @ViewBuilder
@@ -107,13 +215,16 @@ struct SkillListView: View {
             switch appState.sidebarFilter {
             case .dashboard:
                 ContentUnavailableView("Dashboard", systemImage: "gauge.with.dots.needle.bottom.50percent",
-                    description: Text("Select Skills, Agents, or Rules to browse individual files."))
-            case .allAgents:
-                ContentUnavailableView("No Agents", systemImage: "person.crop.rectangle",
-                    description: Text("No agents match the current filter."))
+                    description: Text("Select Skills or Rules to browse individual files."))
+            case .marketplace:
+                ContentUnavailableView("Marketplace", systemImage: "storefront",
+                    description: Text("Browse the marketplace from the sidebar."))
             case .allRules:
                 ContentUnavailableView("No Rules", systemImage: "list.bullet.rectangle",
                     description: Text("No rules match the current filter."))
+            case .needsReview:
+                ContentUnavailableView("Nothing Needs Review", systemImage: "checkmark.seal",
+                    description: Text("All indexed skills and rules have the expected metadata."))
             default:
                 ContentUnavailableView("No Skills", systemImage: "doc.text",
                     description: Text("No skills match the current filter."))
@@ -191,12 +302,29 @@ struct SkillListView: View {
     var body: some View {
         @Bindable var appState = appState
 
-        List(selection: $appState.selectedSkill) {
-            ForEach(filteredSkills) { skill in
-                SkillRow(skill: skill, showTypeBadge: showsTypeBadge)
-                    .tag(skill)
-                    .draggable(skill.resolvedPath)
-                    .contextMenu { contextMenu(for: skill) }
+        VStack(spacing: 0) {
+            if isControlBarVisible {
+                SkillListControlBar(
+                    filteredCount: filteredSkills.count,
+                    totalCount: scopedTotalCount
+                )
+                Divider()
+            }
+
+            List(selection: $appState.selectedSkill) {
+                ForEach(filteredSkills) { skill in
+                    SkillRow(
+                        skill: skill,
+                        showTypeBadge: showsTypeBadge,
+                        onToggleFavorite: {
+                            skill.isFavorite.toggle()
+                            try? modelContext.save()
+                        }
+                    )
+                        .tag(skill)
+                        .draggable(skill.resolvedPath)
+                        .contextMenu { contextMenu(for: skill) }
+                }
             }
         }
         .navigationTitle(title)
@@ -238,12 +366,6 @@ struct SkillListView: View {
                             Label("New Skill", systemImage: "doc.text")
                         }
                         Button {
-                            appState.newItemKind = .agent
-                            appState.showingNewSkillSheet = true
-                        } label: {
-                            Label("New Agent", systemImage: "person.crop.rectangle")
-                        }
-                        Button {
                             appState.newItemKind = .rule
                             appState.showingNewSkillSheet = true
                         } label: {
@@ -251,7 +373,7 @@ struct SkillListView: View {
                         }
                         Divider()
                         Button {
-                            appState.showingRegistrySheet = true
+                            appState.sidebarFilter = .marketplace
                         } label: {
                             Label("Browse Registry", systemImage: "globe")
                         }
@@ -300,24 +422,127 @@ struct SkillListView: View {
             if filteredSkills.isEmpty { emptyStateView }
         }
         .onChange(of: appState.sidebarFilter) {
-            if let selected = appState.selectedSkill, filteredSkills.contains(selected) {
-                // Already selected something valid in this filter
-            } else {
-                appState.selectedSkill = filteredSkills.first
+            updateSelectionForCurrentFilter()
+        }
+        .onChange(of: appState.skillQuickFilter) {
+            updateSelectionForCurrentFilter()
+        }
+        .onChange(of: appState.skillSearchScope) {
+            updateSelectionForCurrentFilter()
+        }
+        .onChange(of: appState.skillSortOption) {
+            updateSelectionForCurrentFilter()
+        }
+        .onChange(of: appState.searchText) {
+            updateSelectionForCurrentFilter()
+        }
+    }
+}
+
+private struct SkillListControlBar: View {
+    @Environment(AppState.self) private var appState
+    let filteredCount: Int
+    let totalCount: Int
+
+    private var countText: String {
+        if filteredCount == totalCount {
+            return "\(filteredCount)"
+        }
+        return "\(filteredCount) of \(totalCount)"
+    }
+
+    var body: some View {
+        @Bindable var appState = appState
+
+        HStack(spacing: 8) {
+            Menu {
+                ForEach(SkillQuickFilter.allCases) { filter in
+                    Button {
+                        appState.skillQuickFilter = filter
+                    } label: {
+                        if appState.skillQuickFilter == filter {
+                            Label(filter.displayName, systemImage: "checkmark")
+                        } else {
+                            Label(filter.displayName, systemImage: filter.icon)
+                        }
+                    }
+                }
+            } label: {
+                Label(appState.skillQuickFilter.displayName, systemImage: appState.skillQuickFilter.icon)
+                    .labelStyle(.titleAndIcon)
+            }
+            .fixedSize()
+
+            Menu {
+                ForEach(SkillSortOption.allCases) { option in
+                    Button {
+                        appState.skillSortOption = option
+                    } label: {
+                        if appState.skillSortOption == option {
+                            Label(option.displayName, systemImage: "checkmark")
+                        } else {
+                            Label(option.displayName, systemImage: option.icon)
+                        }
+                    }
+                }
+            } label: {
+                Label(appState.skillSortOption.displayName, systemImage: "arrow.up.arrow.down")
+                    .labelStyle(.iconOnly)
+            }
+            .help("Sort")
+
+            Menu {
+                ForEach(SkillSearchScope.allCases) { scope in
+                    Button {
+                        appState.skillSearchScope = scope
+                    } label: {
+                        if appState.skillSearchScope == scope {
+                            Label(scope.displayName, systemImage: "checkmark")
+                        } else {
+                            Label(scope.displayName, systemImage: scope.icon)
+                        }
+                    }
+                }
+            } label: {
+                Label(appState.skillSearchScope.displayName, systemImage: appState.skillSearchScope.icon)
+                    .labelStyle(.iconOnly)
+            }
+            .help("Search Scope")
+
+            Spacer(minLength: 8)
+
+            Text(countText)
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+
+            if appState.skillQuickFilter != .all || appState.skillSearchScope != .all {
+                Button {
+                    appState.skillQuickFilter = .all
+                    appState.skillSearchScope = .all
+                } label: {
+                    Image(systemName: "xmark.circle")
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .help("Clear list filters")
             }
         }
+        .padding(.vertical, 8)
+        .padding(.horizontal, 10)
+        .background(Color(NSColor.windowBackgroundColor))
     }
 }
 
 struct SkillRow: View {
     let skill: Skill
     var showTypeBadge: Bool = false
+    var onToggleFavorite: () -> Void = {}
 
     var body: some View {
         HStack(spacing: 6) {
             if showTypeBadge {
                 let kindIcon: String = switch skill.itemKind {
-                case .agent: "person.crop.rectangle"
                 case .rule: "list.bullet.rectangle"
                 case .skill: "doc.text"
                 }
@@ -329,10 +554,22 @@ struct SkillRow: View {
             Text(skill.name)
                 .lineLimit(1)
 
-            if skill.isFavorite {
-                Image(systemName: "star.fill")
+            Button {
+                onToggleFavorite()
+            } label: {
+                Image(systemName: skill.isFavorite ? "star.fill" : "star")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(skill.isFavorite ? Color.yellow : Color.secondary.opacity(0.55))
+                    .frame(width: 16, height: 16)
+            }
+            .buttonStyle(.plain)
+            .help(skill.isFavorite ? "Remove Favorite" : "Add Favorite")
+
+            if skill.hasValidationWarnings {
+                Image(systemName: "exclamationmark.triangle.fill")
                     .font(.caption2)
-                    .foregroundStyle(.yellow)
+                    .foregroundStyle(.orange)
+                    .help(skill.validationIssues.map(\.title).joined(separator: "\n"))
             }
 
             Spacer()

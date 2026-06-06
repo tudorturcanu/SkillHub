@@ -21,6 +21,12 @@ struct ContentView: View {
                 } detail: {
                     DashboardView()
                 }
+            } else if appState.sidebarFilter == .marketplace {
+                NavigationSplitView(columnVisibility: $columnVisibility) {
+                    SidebarView()
+                } detail: {
+                    MarketplaceView()
+                }
             } else {
                 NavigationSplitView(columnVisibility: $columnVisibility) {
                     SidebarView()
@@ -33,7 +39,7 @@ struct ContentView: View {
                         ContentUnavailableView(
                             "Select an Item",
                             systemImage: "sidebar.left",
-                            description: Text("Choose a skill, agent, or rule from the list.")
+                            description: Text("Choose a skill or rule from the list.")
                         )
                     }
                 }
@@ -61,7 +67,7 @@ struct ContentView: View {
         }
         .onChange(of: appState.sidebarFilter) {
             appState.toolKindFilter = nil
-            if appState.sidebarFilter == .dashboard {
+            if appState.sidebarFilter == .dashboard || appState.sidebarFilter == .marketplace {
                 appState.selectedSkill = nil
             }
         }

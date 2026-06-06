@@ -201,24 +201,36 @@ final class SkillRegistry {
         }
 
         let fm = FileManager.default
+        let isGlobal = agents.contains { $0.id == "agents" }
         let sotDir = SkillKitSettings.sotDir
 
-        // Canonical location — matches the official skills CLI behavior
-        let canonicalDir = sotDir.hasSuffix(".agents") ? "\(sotDir)/skills/\(sanitized)" : "\(sotDir)/agents/skills/\(sanitized)"
+        let canonicalBaseDir: String
+        if isGlobal {
+            canonicalBaseDir = sotDir.hasSuffix(".agents") ? "\(sotDir)/skills" : "\(sotDir)/agents/skills"
+        } else {
+            canonicalBaseDir = agents[0].expandedSkillsDir
+        }
+        
+        let canonicalDir = "\(canonicalBaseDir)/\(sanitized)"
         let canonicalFile = "\(canonicalDir)/SKILL.md"
         let canonicalAlreadyExisted = fm.fileExists(atPath: canonicalFile)
 
         // Write real file to canonical location if not already there
         if !canonicalAlreadyExisted {
-            try fm.createDirectory(atPath: canonicalDir, withIntermediateDirectories: true)
-            try content.write(toFile: canonicalFile, atomically: true, encoding: .utf8)
-            AppLogger.fileIO.notice("Wrote canonical skill file to: \(canonicalFile)")
+            try SandboxBookmarkManager.resolveAndAccess(path: canonicalBaseDir) { _ in
+                try fm.createDirectory(atPath: canonicalDir, withIntermediateDirectories: true)
+                try content.write(toFile: canonicalFile, atomically: true, encoding: .utf8)
+                AppLogger.fileIO.notice("Wrote canonical skill file to: \(canonicalFile)")
+            }
         }
 
         // Symlink from each agent's skills dir to the canonical location
         var newLinks = 0
         for agent in agents {
             let agentDir = "\(agent.expandedSkillsDir)/\(sanitized)"
+
+            // Skip if this is the canonical location we just created
+            if agentDir == canonicalDir { continue }
 
             // Skip if already installed (real file or symlink)
             if fm.fileExists(atPath: agentDir) { continue }

@@ -1,12 +1,21 @@
 import SwiftUI
 import SwiftData
 
+enum SkillTemplate: String, CaseIterable, Identifiable {
+    case blank = "Blank"
+    case webScraper = "Web Scraper"
+    case databaseConnector = "Database Connector"
+    
+    var id: String { self.rawValue }
+}
+
 struct NewSkillSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @Environment(AppState.self) private var appState
     @State private var skillName = ""
     @State private var selectedTool: ToolSource = .agents
+    @State private var selectedTemplate: SkillTemplate = .blank
     @State private var errorMessage: String?
 
     private var itemKind: ItemKind { appState.newItemKind }
@@ -15,8 +24,6 @@ struct NewSkillSheet: View {
         switch itemKind {
         case .skill:
             return [.agents, .amp, .antigravity, .claude, .codex, .cursor, .opencode, .pi]
-        case .agent:
-            return ToolSource.allCases.filter { !$0.globalAgentPaths.isEmpty }
         case .rule:
             return ToolSource.allCases.filter { !$0.globalRulePaths.isEmpty }
         }
@@ -36,6 +43,14 @@ struct NewSkillSheet: View {
                     ForEach(creatableTools) { tool in
                         Label(tool.displayName, systemImage: tool.iconName)
                             .tag(tool)
+                    }
+                }
+                
+                if itemKind == .skill {
+                    Picker("Template", selection: $selectedTemplate) {
+                        ForEach(SkillTemplate.allCases) { template in
+                            Text(template.rawValue).tag(template)
+                        }
                     }
                 }
             }
@@ -88,13 +103,7 @@ struct NewSkillSheet: View {
         let fileName: String
 
         switch itemKind {
-        case .agent:
-            guard let dir = selectedTool.globalAgentPaths.first else {
-                errorMessage = "This tool doesn't support agents"
-                return
-            }
-            basePath = "\(dir)/\(sanitizedName)"
-            fileName = "\(sanitizedName).md"
+
         case .rule:
             guard let dir = selectedTool.globalRulePaths.first else {
                 errorMessage = "This tool doesn't support rules"
@@ -166,7 +175,6 @@ struct NewSkillSheet: View {
 
                 switch itemKind {
                 case .skill: appState.sidebarFilter = .allSkills
-                case .agent: appState.sidebarFilter = .allAgents
                 case .rule: appState.sidebarFilter = .allRules
                 }
                 appState.selectedSkill = skill
@@ -183,22 +191,6 @@ struct NewSkillSheet: View {
 
     private func generateBoilerplate(name: String, skillID: String, tool: ToolSource) -> String {
         switch itemKind {
-        case .agent:
-            return """
-            ---
-            name: \(skillID)
-            description: \(name)
-            generator: skillkit
-            ---
-
-            # \(name) (SkillKit Agent)
-
-            ## Overview
-            Describe the agent's main role and capabilities.
-
-            ## Instructions
-            Configure your SkillKit agent behaviors and instructions here.
-            """
         case .rule:
             return """
             # \(name) (SkillKit Rule)
@@ -207,6 +199,26 @@ struct NewSkillSheet: View {
             Add your assistant rule content here.
             """
         case .skill:
+            var instructions = "Add your skill instructions here."
+            switch selectedTemplate {
+            case .webScraper:
+                instructions = """
+                1. Use `curl` or a headless browser to fetch the URL.
+                2. Parse the HTML to extract the requested elements.
+                3. Output the extracted data in a structured format (e.g. JSON, CSV).
+                4. Handle rate limits and connection errors gracefully.
+                """
+            case .databaseConnector:
+                instructions = """
+                1. Connect to the specified database using appropriate drivers.
+                2. Execute the user's query (ensure it is safe and read-only if possible).
+                3. Format the results as a markdown table.
+                4. Report any connection or execution errors clearly.
+                """
+            case .blank:
+                break
+            }
+            
             switch tool {
             case .claude, .cursor, .agents:
                 return """
@@ -222,7 +234,7 @@ struct NewSkillSheet: View {
                 - Describe when this SkillKit skill should be triggered by the coding assistant.
 
                 ## Instructions
-                Add your skill instructions here.
+                \(instructions)
                 """
             default:
                 return """
@@ -235,7 +247,7 @@ struct NewSkillSheet: View {
                 # \(name) (SkillKit Skill)
 
                 ## Instructions
-                Add your skill instructions here.
+                \(instructions)
                 """
             }
         }

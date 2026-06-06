@@ -29,17 +29,20 @@ struct SidebarView: View {
                 Label("Dashboard", systemImage: "gauge.with.dots.needle.bottom.50percent")
                     .tag(SidebarFilter.dashboard)
 
+                Label("Marketplace", systemImage: "storefront")
+                    .tag(SidebarFilter.marketplace)
+
                 Label("Skills", systemImage: "doc.text")
                     .badge(allSkills.filter { $0.itemKind == .skill }.count)
                     .tag(SidebarFilter.allSkills)
 
-                Label("Agents", systemImage: "person.crop.rectangle")
-                    .badge(allSkills.filter { $0.itemKind == .agent }.count)
-                    .tag(SidebarFilter.allAgents)
-
                 Label("Rules", systemImage: "list.bullet.rectangle")
                     .badge(allSkills.filter { $0.itemKind == .rule }.count)
                     .tag(SidebarFilter.allRules)
+
+                Label("Needs Review", systemImage: "exclamationmark.triangle")
+                    .badge(allSkills.filter(\.hasValidationWarnings).count)
+                    .tag(SidebarFilter.needsReview)
 
                 Label("Favorites", systemImage: "star")
                     .badge(allSkills.filter(\.isFavorite).count)

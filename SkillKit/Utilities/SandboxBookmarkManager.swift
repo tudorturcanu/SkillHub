@@ -23,6 +23,7 @@ enum SandboxBookmarkManager {
         let key = "bookmark_\(path)"
         guard let bookmarkData = UserDefaults.standard.data(forKey: key) else {
             // No bookmark found, fallback to standard URL (useful inside sandbox container, e.g. App Support)
+            AppLogger.fileIO.notice("No bookmark found for \(path), falling back to direct URL")
             let url = URL(fileURLWithPath: path)
             return try action(url)
         }
