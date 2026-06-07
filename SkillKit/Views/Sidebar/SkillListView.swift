@@ -4,6 +4,7 @@ import SwiftData
 struct SkillListView: View {
     private enum ActiveAlert: Identifiable {
         case confirmDelete(Skill)
+        case confirmDeleteSelected(Int)
         case confirmMakeGlobal(Skill)
         case deleteError(String)
         case makeGlobalError(String)
@@ -12,6 +13,8 @@ struct SkillListView: View {
             switch self {
             case .confirmDelete(let skill):
                 return "confirm-delete-\(skill.filePath)"
+            case .confirmDeleteSelected(let count):
+                return "confirm-delete-selected-\(count)"
             case .confirmMakeGlobal(let skill):
                 return "confirm-make-global-\(skill.filePath)"
             case .deleteError(let message):
@@ -27,6 +30,7 @@ struct SkillListView: View {
     @Query(sort: \Skill.name) private var allSkills: [Skill]
     @Query(sort: \SkillCollection.name) private var allCollections: [SkillCollection]
     @State private var activeAlert: ActiveAlert?
+    @State private var selectedSkillPaths: Set<String> = []
 
     private var baseFilteredSkills: [Skill] {
         var result = allSkills
@@ -140,6 +144,14 @@ struct SkillListView: View {
         return result.count
     }
 
+    private var selectedSkills: [Skill] {
+        allSkills.filter { selectedSkillPaths.contains($0.resolvedPath) }
+    }
+
+    private var selectedLocalEditableSkills: [Skill] {
+        selectedSkills.filter { !$0.isReadOnly && !$0.isRemote }
+    }
+
     private var title: String {
         switch appState.sidebarFilter {
         case .dashboard: "Dashboard"
@@ -197,10 +209,15 @@ struct SkillListView: View {
     }
 
     private func updateSelectionForCurrentFilter() {
+        let visiblePaths = Set(filteredSkills.map(\.resolvedPath))
+        selectedSkillPaths.formIntersection(visiblePaths)
+
         if let selected = appState.selectedSkill, filteredSkills.contains(selected) {
+            selectedSkillPaths.insert(selected.resolvedPath)
             return
         }
         appState.selectedSkill = filteredSkills.first
+        selectedSkillPaths = Set(filteredSkills.prefix(1).map(\.resolvedPath))
     }
 
     @ViewBuilder
@@ -292,11 +309,55 @@ struct SkillListView: View {
             if appState.selectedSkill == skill {
                 appState.selectedSkill = nil
             }
+            selectedSkillPaths.remove(skill.resolvedPath)
             modelContext.delete(skill)
             try modelContext.save()
         } catch {
             activeAlert = .deleteError(error.localizedDescription)
         }
+    }
+
+    private func deleteSelectedSkills() {
+        let skillsToDelete = selectedLocalEditableSkills
+        do {
+            for skill in skillsToDelete {
+                try skill.deleteFromDisk()
+                if appState.selectedSkill == skill {
+                    appState.selectedSkill = nil
+                }
+                selectedSkillPaths.remove(skill.resolvedPath)
+                modelContext.delete(skill)
+            }
+            try modelContext.save()
+        } catch {
+            activeAlert = .deleteError(error.localizedDescription)
+        }
+    }
+
+    private func setFavoriteForSelection(_ isFavorite: Bool) {
+        for skill in selectedSkills {
+            skill.isFavorite = isFavorite
+        }
+        try? modelContext.save()
+    }
+
+    private func setCollection(_ collection: SkillCollection, isAssigned: Bool) {
+        for skill in selectedSkills {
+            let alreadyAssigned = skill.collections.contains { $0.name == collection.name }
+            if isAssigned, !alreadyAssigned {
+                skill.collections.append(collection)
+            } else if !isAssigned, alreadyAssigned {
+                skill.collections.removeAll { $0.name == collection.name }
+            }
+        }
+        try? modelContext.save()
+    }
+
+    private func revealSelectedInFinder() {
+        let urls = selectedSkills
+            .filter { !$0.isRemote }
+            .map { URL(fileURLWithPath: $0.filePath) }
+        NSWorkspace.shared.activateFileViewerSelecting(urls)
     }
 
     var body: some View {
@@ -311,7 +372,7 @@ struct SkillListView: View {
                 Divider()
             }
 
-            List(selection: $appState.selectedSkill) {
+            List(selection: $selectedSkillPaths) {
                 ForEach(filteredSkills) { skill in
                     SkillRow(
                         skill: skill,
@@ -321,7 +382,7 @@ struct SkillListView: View {
                             try? modelContext.save()
                         }
                     )
-                        .tag(skill)
+                        .tag(skill.resolvedPath)
                         .draggable(skill.resolvedPath)
                         .contextMenu { contextMenu(for: skill) }
                 }
@@ -381,6 +442,62 @@ struct SkillListView: View {
                         Image(systemName: "plus")
                     }
                     .menuIndicator(.hidden)
+
+                    if selectedSkills.count > 1 {
+                        Menu {
+                            Button {
+                                setFavoriteForSelection(true)
+                            } label: {
+                                Label("Favorite Selected", systemImage: "star.fill")
+                            }
+
+                            Button {
+                                setFavoriteForSelection(false)
+                            } label: {
+                                Label("Unfavorite Selected", systemImage: "star")
+                            }
+
+                            if !allCollections.isEmpty {
+                                Divider()
+                                Menu("Collections") {
+                                    ForEach(allCollections) { collection in
+                                        Button {
+                                            setCollection(collection, isAssigned: true)
+                                        } label: {
+                                            Label(collection.name, systemImage: collection.icon)
+                                        }
+
+                                        Button {
+                                            setCollection(collection, isAssigned: false)
+                                        } label: {
+                                            Label("Remove from \(collection.name)", systemImage: "minus.circle")
+                                        }
+                                    }
+                                }
+                            }
+
+                            if selectedSkills.contains(where: { !$0.isRemote }) {
+                                Divider()
+                                Button {
+                                    revealSelectedInFinder()
+                                } label: {
+                                    Label("Reveal Selected in Finder", systemImage: "folder")
+                                }
+                            }
+
+                            if !selectedLocalEditableSkills.isEmpty {
+                                Divider()
+                                Button(role: .destructive) {
+                                    activeAlert = .confirmDeleteSelected(selectedLocalEditableSkills.count)
+                                } label: {
+                                    Label("Delete Selected", systemImage: "trash")
+                                }
+                            }
+                        } label: {
+                            Image(systemName: "checklist")
+                        }
+                        .help("Bulk Actions")
+                    }
                 }
             }
         }
@@ -404,6 +521,15 @@ struct SkillListView: View {
                     },
                     secondaryButton: .cancel()
                 )
+            case .confirmDeleteSelected(let count):
+                return Alert(
+                    title: Text("Delete \(count) Items?"),
+                    message: Text("This will permanently delete the selected local editable items from disk. Remote and read-only items are skipped."),
+                    primaryButton: .destructive(Text("Delete")) {
+                        deleteSelectedSkills()
+                    },
+                    secondaryButton: .cancel()
+                )
             case .deleteError(let message):
                 return Alert(
                     title: Text("Delete Failed"),
@@ -423,6 +549,23 @@ struct SkillListView: View {
         }
         .onChange(of: appState.sidebarFilter) {
             updateSelectionForCurrentFilter()
+        }
+        .onChange(of: selectedSkillPaths) {
+            guard let selectedPath = selectedSkillPaths.first else {
+                appState.selectedSkill = nil
+                return
+            }
+            appState.selectedSkill = filteredSkills.first { $0.resolvedPath == selectedPath }
+                ?? allSkills.first { $0.resolvedPath == selectedPath }
+        }
+        .onChange(of: appState.selectedSkill?.resolvedPath) {
+            guard let selectedPath = appState.selectedSkill?.resolvedPath else {
+                selectedSkillPaths = []
+                return
+            }
+            if !selectedSkillPaths.contains(selectedPath) {
+                selectedSkillPaths = [selectedPath]
+            }
         }
         .onChange(of: appState.skillQuickFilter) {
             updateSelectionForCurrentFilter()
