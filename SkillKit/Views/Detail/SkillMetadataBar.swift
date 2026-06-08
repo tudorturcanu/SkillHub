@@ -46,6 +46,12 @@ struct SkillMetadataBar: View {
 
             Divider().frame(height: 16)
 
+            Text("\(characterCount) chars / \(wordCount) words")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Divider().frame(height: 16)
+
             validationStatusButton
 
             Divider().frame(height: 16)
@@ -101,6 +107,14 @@ struct SkillMetadataBar: View {
             .filter { $0 != skill.filePath }
             .sorted()
         return [skill.filePath] + otherPaths
+    }
+
+    private var wordCount: Int {
+        skill.content.split { $0.isWhitespace || $0.isNewline }.count
+    }
+
+    private var characterCount: Int {
+        skill.content.count
     }
 
     @ViewBuilder

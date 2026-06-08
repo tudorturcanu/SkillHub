@@ -190,6 +190,15 @@ struct SkillDetailView: View {
                     }
                     .help("Delete \(skill.displayTypeName)")
                 }
+                ToolbarItem {
+                    Button {
+                        appState.skillToDuplicate = skill
+                        appState.showingDuplicateSkillSheet = true
+                    } label: {
+                        Image(systemName: "plus.square.on.square")
+                    }
+                    .help("Duplicate \(skill.displayTypeName)")
+                }
             }
             if skill.canMakeGlobal {
                 ToolbarItem(placement: .primaryAction) {

@@ -65,6 +65,9 @@ struct ContentView: View {
         .sheet(isPresented: $appState.showingRegistrySheet) {
             RegistrySheet()
         }
+        .sheet(isPresented: $appState.showingDuplicateSkillSheet) {
+            DuplicateSkillSheet()
+        }
         .onChange(of: appState.sidebarFilter) {
             appState.toolKindFilter = nil
             if appState.sidebarFilter == .dashboard || appState.sidebarFilter == .marketplace {

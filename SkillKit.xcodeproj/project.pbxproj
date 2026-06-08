@@ -40,6 +40,7 @@
 		6D3C6CFB7A504DB918A13B0E /* SkillPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2757DB65E4E979F9A01C9407 /* SkillPreviewView.swift */; };
 		6DF7753534850BB7312DDDA8 /* SchemaVersions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26EC1CA1A41F1F25D08BC825 /* SchemaVersions.swift */; };
 		6FACE272839E993072BDA243 /* ToolFilterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3B392D3D58E4A085BC7CA04 /* ToolFilterView.swift */; };
+		711BF33013D4EF6455A09495 /* DuplicateSkillSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5F03327FE2DB7BEA856A719 /* DuplicateSkillSheet.swift */; };
 		78DD7C487A74440E3B0566E8 /* DiffReviewPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D5FF8449949F4BB18AE52E6 /* DiffReviewPanel.swift */; };
 		7B07E9E1052B5CDA6BB5FE4C /* CollectionListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E7EB47E9257C409A075863C /* CollectionListView.swift */; };
 		7D33BE5744FFC24B32251523 /* AppLogger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E1FC406874A10D7A6B783B3 /* AppLogger.swift */; };
@@ -128,6 +129,7 @@
 		AFDE0789EDFED65EA20D75D0 /* AgentLogger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentLogger.swift; sourceTree = "<group>"; };
 		B058BB7CD34548E335E5F0D5 /* Collection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Collection.swift; sourceTree = "<group>"; };
 		B2A241215388F068B986A2A6 /* AgentConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentConfiguration.swift; sourceTree = "<group>"; };
+		B5F03327FE2DB7BEA856A719 /* DuplicateSkillSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DuplicateSkillSheet.swift; sourceTree = "<group>"; };
 		B94C747B8AEF9B00305F6824 /* MarkdownMessageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownMessageView.swift; sourceTree = "<group>"; };
 		BA9BFBF4CF9A2AEB8D8228E3 /* SSHService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSHService.swift; sourceTree = "<group>"; };
 		C23E68CF20BB4455FD1F8FE9 /* SkillParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkillParser.swift; sourceTree = "<group>"; };
@@ -351,6 +353,7 @@
 				166071A496D4B741CDD0E7E4 /* ComposeModel.swift */,
 				D4E0510DE784A309C0F475D2 /* ComposePanel.swift */,
 				4D5FF8449949F4BB18AE52E6 /* DiffReviewPanel.swift */,
+				B5F03327FE2DB7BEA856A719 /* DuplicateSkillSheet.swift */,
 				B94C747B8AEF9B00305F6824 /* MarkdownMessageView.swift */,
 				5D0E03CD3C1B15CB85FA238A /* MarketplaceView.swift */,
 				016DB8E6814CD5D9B724D168 /* NewSkillSheet.swift */,
@@ -458,6 +461,7 @@
 				69F6C86D428F82C3F5C5AF6F /* DashboardView.swift in Sources */,
 				BCB6F4F6DE604B63EF4C3CAF /* DiagnosticExporter.swift in Sources */,
 				78DD7C487A74440E3B0566E8 /* DiffReviewPanel.swift in Sources */,
+				711BF33013D4EF6455A09495 /* DuplicateSkillSheet.swift in Sources */,
 				947242D18514356BEE0CA0DB /* EditorTheme.swift in Sources */,
 				8A40E1B7B4A007BF24158B47 /* FileWatcher.swift in Sources */,
 				C8D76DF64DC16051051FD5B1 /* FrontmatterParser.swift in Sources */,

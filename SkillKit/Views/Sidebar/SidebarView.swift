@@ -49,6 +49,10 @@ struct SidebarView: View {
                     .tag(SidebarFilter.favorites)
             }
 
+            Section("Collections") {
+                CollectionListView()
+            }
+
             if !activeSources.isEmpty {
                 Section("Tools") {
                     ForEach(activeSources) { tool in
