@@ -1,6 +1,6 @@
 import SwiftUI
 
-struct MarketplaceView: View {
+struct ExploreView: View {
     @State private var registry = SkillRegistry()
     @State private var searchText = "git"
     @State private var results: [SkillRegistry.RegistrySkill] = []
@@ -25,7 +25,7 @@ struct MarketplaceView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            marketplaceHeader
+            exploreHeader
                 .padding(.horizontal, 28)
                 .padding(.top, 22)
                 .padding(.bottom, 16)
@@ -37,10 +37,10 @@ struct MarketplaceView: View {
                     .frame(minWidth: 330, idealWidth: 390)
 
                 detailPane
-                    .frame(minWidth: 420)
+                    .frame(minWidth: 440)
             }
         }
-        .navigationTitle("Marketplace")
+        .navigationTitle("Explore")
         .onAppear {
             selectedAgents = Set(installedAgents.map(\.id))
             if results.isEmpty {
@@ -53,10 +53,10 @@ struct MarketplaceView: View {
         }
     }
 
-    private var marketplaceHeader: some View {
+    private var exploreHeader: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .top, spacing: 16) {
-                Image(systemName: "storefront.fill")
+                Image(systemName: "compass.fill")
                     .font(.system(size: 22, weight: .semibold))
                     .foregroundStyle(Color.accentColor)
                     .frame(width: 42, height: 42)
@@ -64,7 +64,7 @@ struct MarketplaceView: View {
 
                 VStack(alignment: .leading, spacing: 5) {
                     HStack(spacing: 10) {
-                        Text("Skill Marketplace")
+                        Text("Explore Skills")
                             .font(.system(size: 28, weight: .bold, design: .rounded))
 
                         if isSearching {
@@ -73,7 +73,7 @@ struct MarketplaceView: View {
                         }
                     }
 
-                    Text("Search skills.sh, preview the source skill, then install it into your local agent tools.")
+                    Text("Search the registry, preview source skills, and install them into your local developer agents.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
@@ -85,7 +85,7 @@ struct MarketplaceView: View {
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(.secondary)
 
-                TextField("Search skills, tools, frameworks, or workflows", text: $searchText)
+                TextField("Search registry skills, tools, frameworks, or workflows...", text: $searchText)
                     .textFieldStyle(.plain)
                     .onSubmit {
                         runSearch(query: searchText)
@@ -98,7 +98,7 @@ struct MarketplaceView: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(Color.accentColor)
-                .help("Search marketplace")
+                .help("Search registry")
                 .disabled(searchText.trimmingCharacters(in: .whitespacesAndNewlines).count < 2)
             }
             .padding(.vertical, 10)
@@ -125,7 +125,7 @@ struct MarketplaceView: View {
                                 .font(.caption.weight(.medium))
                                 .padding(.vertical, 6)
                                 .padding(.horizontal, 10)
-                                .background(searchText == query ? Color.accentColor.opacity(0.14) : Color.secondary.opacity(0.09), in: Capsule())
+                                .background(searchText == query ? Color.accentColor.opacity(0.14) : Color.secondary.opacity(0.07), in: Capsule())
                                 .foregroundStyle(searchText == query ? Color.accentColor : Color.secondary)
                         }
                         .buttonStyle(.plain)
@@ -138,8 +138,9 @@ struct MarketplaceView: View {
     private var resultsPane: some View {
         VStack(spacing: 0) {
             HStack {
-                Text(results.isEmpty ? "Results" : "\(results.count) Results")
-                    .font(.headline)
+                Text(results.isEmpty ? "Registry" : "\(results.count) Registry Skills")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(.secondary)
                 Spacer()
             }
             .padding(.horizontal, 18)
@@ -148,11 +149,11 @@ struct MarketplaceView: View {
             Divider()
 
             if results.isEmpty && isSearching {
-                ProgressView("Searching Marketplace...")
+                ProgressView("Searching registry...")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if results.isEmpty {
                 ContentUnavailableView {
-                    Label("No Skills Found", systemImage: "storefront")
+                    Label("No Skills Found", systemImage: "compass")
                 } description: {
                     Text(searchText.count < 2 ? "Type at least two characters to search." : "Try another topic or framework.")
                 }
@@ -163,7 +164,7 @@ struct MarketplaceView: View {
                         Button {
                             selectSkill(skill)
                         } label: {
-                            MarketplaceResultRow(
+                            ExploreResultRow(
                                 skill: skill,
                                 isSelected: selectedSkill?.id == skill.id
                             )
@@ -192,7 +193,7 @@ struct MarketplaceView: View {
             ContentUnavailableView {
                 Label("Select a Skill", systemImage: "doc.text.magnifyingglass")
             } description: {
-                Text("Preview marketplace details and choose install targets.")
+                Text("Preview registry details and choose install targets.")
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
@@ -201,27 +202,52 @@ struct MarketplaceView: View {
     private func skillDetail(_ skill: SkillRegistry.RegistrySkill) -> some View {
         VStack(spacing: 0) {
             HStack(alignment: .top, spacing: 14) {
-                Image(systemName: "shippingbox.fill")
-                    .font(.system(size: 32))
-                    .foregroundStyle(.teal)
+                Image(systemName: platformIcon(for: skill.name))
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundStyle(platformColor(for: skill.name))
                     .frame(width: 44, height: 44)
+                    .background(platformColor(for: skill.name).opacity(0.12))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
 
-                VStack(alignment: .leading, spacing: 5) {
+                VStack(alignment: .leading, spacing: 4) {
                     Text(skill.name)
-                        .font(.title2.weight(.semibold))
+                        .font(.system(size: 20, weight: .bold, design: .rounded))
                         .lineLimit(2)
-                    Text(skill.source)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
-
-                    HStack(spacing: 8) {
-                        Label("\(skill.formattedInstalls) installs", systemImage: "arrow.down.circle")
-                        Label(skill.skillId, systemImage: "number")
+                    
+                    HStack(spacing: 4) {
+                        Image(systemName: "link")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                        Text(skill.source)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
                             .textSelection(.enabled)
                     }
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
+
+                    HStack(spacing: 8) {
+                        HStack(spacing: 3) {
+                            Image(systemName: "arrow.down.circle.fill")
+                            Text("\(skill.formattedInstalls) installs")
+                        }
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.green.opacity(0.12))
+                        .foregroundStyle(.green)
+                        .clipShape(Capsule())
+
+                        HStack(spacing: 3) {
+                            Image(systemName: "number")
+                            Text(skill.skillId)
+                        }
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.primary.opacity(0.06))
+                        .foregroundStyle(.secondary)
+                        .clipShape(Capsule())
+                        .textSelection(.enabled)
+                    }
+                    .font(.system(size: 11, weight: .bold))
+                    .padding(.top, 4)
                 }
 
                 Spacer()
@@ -236,6 +262,14 @@ struct MarketplaceView: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if let skillContent {
                     SkillPreviewView(content: skillContent)
+                        .padding(16)
+                        .background(Color(NSColor.controlBackgroundColor))
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                        )
+                        .padding(16)
                 } else if let previewError {
                     ContentUnavailableView {
                         Label("Preview Unavailable", systemImage: "exclamationmark.triangle")
@@ -256,12 +290,13 @@ struct MarketplaceView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("Install Targets")
-                    .font(.headline)
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(.secondary)
 
                 Spacer()
 
                 if !installedAgents.isEmpty {
-                    Button(selectedAgents.count == installedAgents.count ? "Clear" : "Select All") {
+                    Button(selectedAgents.count == installedAgents.count ? "Clear All" : "Select All") {
                         if selectedAgents.count == installedAgents.count {
                             selectedAgents.removeAll()
                         } else {
@@ -270,6 +305,7 @@ struct MarketplaceView: View {
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(Color.accentColor)
+                    .font(.system(size: 12, weight: .semibold))
                 }
             }
 
@@ -278,30 +314,14 @@ struct MarketplaceView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 130), spacing: 8)], spacing: 8) {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 120), spacing: 8)], spacing: 8) {
                     ForEach(installedAgents) { agent in
-                        let isSelected = selectedAgents.contains(agent.id)
-                        Button {
+                        AgentTargetCard(
+                            agent: agent,
+                            isSelected: selectedAgents.contains(agent.id)
+                        ) {
                             toggleAgent(agent)
-                        } label: {
-                            HStack(spacing: 7) {
-                                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                                    .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
-                                Text(agent.displayName)
-                                    .lineLimit(1)
-                                Spacer(minLength: 0)
-                            }
-                            .font(.caption)
-                            .padding(.vertical, 7)
-                            .padding(.horizontal, 9)
-                            .background(isSelected ? Color.accentColor.opacity(0.12) : Color(NSColor.controlBackgroundColor))
-                            .clipShape(RoundedRectangle(cornerRadius: 7))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 7)
-                                    .stroke(isSelected ? Color.accentColor.opacity(0.25) : Color.primary.opacity(0.06), lineWidth: 1)
-                            )
                         }
-                        .buttonStyle(.plain)
                     }
                 }
             }
@@ -312,8 +332,8 @@ struct MarketplaceView: View {
                 }
 
                 if installSuccess {
-                    Label("Installed", systemImage: "checkmark.circle.fill")
-                        .font(.caption)
+                    Label("Successfully Installed!", systemImage: "checkmark.circle.fill")
+                        .font(.system(size: 12, weight: .bold))
                         .foregroundStyle(.green)
                 }
 
@@ -328,14 +348,18 @@ struct MarketplaceView: View {
                         ProgressView()
                             .controlSize(.small)
                     } else {
-                        Label("Install", systemImage: "arrow.down.circle")
+                        Label("Install Skill", systemImage: "arrow.down.circle.fill")
                     }
                 }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.regular)
                 .keyboardShortcut(.defaultAction)
                 .disabled(skillContent == nil || selectedAgents.isEmpty || isInstalling || installSuccess)
             }
+            .padding(.top, 4)
         }
         .padding(18)
+        .background(Color(NSColor.windowBackgroundColor).opacity(0.3))
     }
 
     private func debounceSearch(query: String) {
@@ -458,49 +482,90 @@ struct MarketplaceView: View {
 
     private func featuredIcon(for query: String) -> String {
         switch query {
-        case "swift": "swift"
-        case "testing": "checkmark.seal"
-        case "xcode": "hammer"
-        case "supabase": "server.rack"
-        case "docs": "doc.text"
-        case "git": "point.3.connected.trianglepath.dotted"
-        default: "sparkle.magnifyingglass"
+        case "swift": return "swift"
+        case "testing": return "checkmark.seal"
+        case "xcode": return "hammer"
+        case "supabase": return "server.rack"
+        case "docs": return "doc.text"
+        case "git": return "point.3.connected.trianglepath.dotted"
+        default: return "sparkle.magnifyingglass"
+        }
+    }
+
+    private func platformIcon(for name: String) -> String {
+        let lower = name.lowercased()
+        if lower.contains("swift") || lower.contains("xcode") || lower.contains("ios") || lower.contains("macos") {
+            return "hammer.fill"
+        } else if lower.contains("git") || lower.contains("github") || lower.contains("gitlab") {
+            return "terminal.fill"
+        } else if lower.contains("supabase") || lower.contains("db") || lower.contains("postgres") || lower.contains("sql") {
+            return "server.rack"
+        } else if lower.contains("node") || lower.contains("npm") || lower.contains("js") || lower.contains("ts") || lower.contains("react") {
+            return "app.dashed"
+        } else {
+            return "shippingbox.fill"
+        }
+    }
+
+    private func platformColor(for name: String) -> Color {
+        let lower = name.lowercased()
+        if lower.contains("swift") || lower.contains("xcode") || lower.contains("ios") || lower.contains("macos") {
+            return .orange
+        } else if lower.contains("git") || lower.contains("github") || lower.contains("gitlab") {
+            return .purple
+        } else if lower.contains("supabase") || lower.contains("db") || lower.contains("postgres") || lower.contains("sql") {
+            return .green
+        } else if lower.contains("node") || lower.contains("npm") || lower.contains("js") || lower.contains("ts") || lower.contains("react") {
+            return .blue
+        } else {
+            return .teal
         }
     }
 }
 
-private struct MarketplaceResultRow: View {
+// MARK: - ExploreResultRow
+
+private struct ExploreResultRow: View {
     let skill: SkillRegistry.RegistrySkill
     let isSelected: Bool
 
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "shippingbox")
-                .font(.system(size: 16))
-                .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
-                .frame(width: 22, height: 22)
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: platformIcon(for: skill.name))
+                .font(.system(size: 14, weight: .bold))
+                .foregroundStyle(isSelected ? Color.accentColor : platformColor(for: skill.name))
+                .frame(width: 32, height: 32)
+                .background(
+                    (isSelected ? Color.accentColor : platformColor(for: skill.name))
+                        .opacity(0.12)
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 8))
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(skill.name)
-                    .font(.subheadline.weight(.semibold))
+                    .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
 
                 Text(skill.source)
-                    .font(.caption)
+                    .font(.system(size: 11))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
 
-                Label("\(skill.formattedInstalls) installs", systemImage: "arrow.down.circle")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
+                HStack(spacing: 4) {
+                    Image(systemName: "arrow.down.circle")
+                        .font(.system(size: 10))
+                    Text("\(skill.formattedInstalls) installs")
+                }
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(.tertiary)
             }
 
             Spacer(minLength: 0)
 
             if isSelected {
                 Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
+                    .font(.system(size: 11, weight: .bold))
                     .foregroundStyle(Color.accentColor)
                     .padding(.top, 4)
             }
@@ -508,16 +573,113 @@ private struct MarketplaceResultRow: View {
         .padding(.vertical, 8)
         .padding(.horizontal, 10)
         .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(isSelected ? Color.accentColor.opacity(0.12) : Color.clear)
+            RoundedRectangle(cornerRadius: 10)
+                .fill(isSelected ? Color.accentColor.opacity(0.08) : Color.clear)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(isSelected ? Color.accentColor.opacity(0.2) : Color.clear, lineWidth: 1)
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(isSelected ? Color.accentColor.opacity(0.15) : Color.primary.opacity(0.03), lineWidth: 1)
         )
         .contentShape(Rectangle())
     }
+
+    private func platformIcon(for name: String) -> String {
+        let lower = name.lowercased()
+        if lower.contains("swift") || lower.contains("xcode") || lower.contains("ios") || lower.contains("macos") {
+            return "hammer.fill"
+        } else if lower.contains("git") || lower.contains("github") || lower.contains("gitlab") {
+            return "terminal.fill"
+        } else if lower.contains("supabase") || lower.contains("db") || lower.contains("postgres") || lower.contains("sql") {
+            return "server.rack"
+        } else if lower.contains("node") || lower.contains("npm") || lower.contains("js") || lower.contains("ts") || lower.contains("react") {
+            return "app.dashed"
+        } else {
+            return "shippingbox.fill"
+        }
+    }
+
+    private func platformColor(for name: String) -> Color {
+        let lower = name.lowercased()
+        if lower.contains("swift") || lower.contains("xcode") || lower.contains("ios") || lower.contains("macos") {
+            return .orange
+        } else if lower.contains("git") || lower.contains("github") || lower.contains("gitlab") {
+            return .purple
+        } else if lower.contains("supabase") || lower.contains("db") || lower.contains("postgres") || lower.contains("sql") {
+            return .green
+        } else if lower.contains("node") || lower.contains("npm") || lower.contains("js") || lower.contains("ts") || lower.contains("react") {
+            return .blue
+        } else {
+            return .teal
+        }
+    }
 }
+
+// MARK: - AgentTargetCard
+
+private struct AgentTargetCard: View {
+    let agent: AgentTarget
+    let isSelected: Bool
+    let action: () -> Void
+
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Image(systemName: agentIcon(for: agent.id))
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
+                    .frame(width: 26, height: 26)
+                    .background(
+                        (isSelected ? Color.accentColor : Color.secondary)
+                            .opacity(0.1)
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(agent.displayName)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 0)
+
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(isSelected ? Color.accentColor : Color.secondary.opacity(0.3))
+            }
+            .padding(.vertical, 8)
+            .padding(.horizontal, 10)
+            .background(isSelected ? Color.accentColor.opacity(0.06) : Color(NSColor.controlBackgroundColor))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(isSelected ? Color.accentColor.opacity(0.3) : (isHovered ? Color.primary.opacity(0.12) : Color.primary.opacity(0.04)), lineWidth: 1)
+            )
+            .scaleEffect(isHovered ? 1.02 : 1.0)
+            .animation(.spring(response: 0.2, dampingFraction: 0.7), value: isHovered)
+            .onHover { hovering in
+                isHovered = hovering
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func agentIcon(for id: String) -> String {
+        switch id {
+        case "agents": return "globe"
+        case "claude": return "sparkles"
+        case "codex": return "cpu"
+        case "copilot": return "square.stack.3d.up"
+        case "cursor": return "cursorarrow"
+        case "windsurf": return "wind"
+        default: return "terminal"
+        }
+    }
+}
+
+// MARK: - InlineErrorView
 
 private struct InlineErrorView: View {
     let message: String

@@ -162,14 +162,13 @@ struct DashboardView: View {
                 ) {
                     appState.showingNewSkillSheet = true
                 }
-
                 ActionButton(
                     title: "Browse Registry",
                     description: "Install from the skills ecosystem",
                     icon: "globe.americas.fill",
                     color: Color.teal
                 ) {
-                    appState.sidebarFilter = .marketplace
+                    appState.sidebarFilter = .explore
                 }
             }
         }
