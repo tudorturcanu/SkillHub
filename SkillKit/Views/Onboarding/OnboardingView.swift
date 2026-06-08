@@ -49,9 +49,12 @@ struct OnboardingView: View {
                     .frame(maxWidth: 960, alignment: .leading)
             }
 
-            VStack(alignment: .leading, spacing: 22) {
+            LazyVGrid(columns: [
+                GridItem(.flexible(), spacing: 18),
+                GridItem(.flexible(), spacing: 18)
+            ], spacing: 18) {
                 ForEach(PlatformOption.onboarding) { option in
-                    PlatformToggleRow(
+                    PlatformCard(
                         option: option,
                         isSelected: selectedPlatformIDs.contains(option.id)
                     ) {
@@ -59,6 +62,7 @@ struct OnboardingView: View {
                     }
                 }
             }
+            .frame(maxWidth: 720)
 
             Spacer(minLength: 0)
         }
@@ -83,9 +87,11 @@ struct OnboardingView: View {
                         .frame(maxWidth: 960, alignment: .leading)
                 }
 
-                ForEach(selectedPlatforms) { option in
-                    platformFolderCards(for: option)
-                }
+                folderTable
+                    .frame(maxWidth: 820)
+
+                permissionWarningBanner
+                    .frame(maxWidth: 820)
             }
             .padding(.top, 48)
             .padding(.horizontal, 48)
@@ -94,33 +100,125 @@ struct OnboardingView: View {
         }
     }
 
-    @ViewBuilder
-    private func platformFolderCards(for option: PlatformOption) -> some View {
-        VStack(alignment: .leading, spacing: 18) {
-            FolderAccessCard(
+    private var folderItems: [FolderPermissionItem] {
+        var items: [FolderPermissionItem] = []
+        for option in selectedPlatforms {
+            items.append(FolderPermissionItem(
+                id: "\(option.id)_skills",
+                platform: option,
                 title: "\(option.displayName) User Skills",
                 path: option.expandedSkillsPath,
                 expectedPath: option.shortSkillsPath,
                 buttonTitle: "Choose \(option.displayName) User Folder",
-                isGranted: isGranted(option.expandedSkillsPath),
-                isSyncing: syncingPaths.contains(option.expandedSkillsPath),
-                isRequired: false
-            ) {
-                chooseFolder(for: option.expandedSkillsPath)
-            }
-
+                isRequired: false,
+                isXcode: false
+            ))
             if let xcodePath = option.expandedXcodePath {
-                FolderAccessCard(
+                items.append(FolderPermissionItem(
+                    id: "\(option.id)_xcode",
+                    platform: option,
                     title: "\(option.displayName) Xcode Environment",
                     path: xcodePath,
                     expectedPath: "Choose the Xcode \(option.displayName) environment folder or its `skills` subfolder.",
                     buttonTitle: "Choose \(option.displayName) Xcode Folder",
-                    isGranted: isGranted(xcodePath),
-                    isSyncing: syncingPaths.contains(xcodePath),
-                    isRequired: true
-                ) {
-                    chooseFolder(for: xcodePath)
+                    isRequired: true,
+                    isXcode: true
+                ))
+            }
+        }
+        return items
+    }
+
+    private var folderTable: some View {
+        VStack(spacing: 0) {
+            // Table Header
+            HStack(spacing: 16) {
+                Text("Platform & Target")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 220, alignment: .leading)
+
+                Text("Location")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                Text("Status")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 120, alignment: .center)
+
+                Text("Action")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 110, alignment: .trailing)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(Color.primary.opacity(0.04))
+
+            Divider()
+
+            // Table Body
+            VStack(spacing: 0) {
+                let items = folderItems
+                if items.isEmpty {
+                    Text("No platforms selected. Please go back and select at least one platform.")
+                        .font(.system(size: 14))
+                        .foregroundStyle(.secondary)
+                        .padding(32)
+                } else {
+                    ForEach(items) { item in
+                        FolderTableRow(
+                            item: item,
+                            isGranted: isGranted(item.path),
+                            isSyncing: syncingPaths.contains(item.path)
+                        ) {
+                            chooseFolder(for: item.path)
+                        }
+
+                        if item.id != items.last?.id {
+                            Divider()
+                        }
+                    }
                 }
+            }
+        }
+        .background(Color(NSColor.controlBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+        )
+    }
+
+    private var permissionWarningBanner: some View {
+        let hasUngranted = folderItems.contains { !isGranted($0.path) }
+        return Group {
+            if hasUngranted {
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 14))
+                        .foregroundStyle(.orange)
+                        .padding(.top, 2)
+                    
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Missing Folder Access")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(.primary)
+                        Text("SkillKit cannot scan, install, or sync skills for targets marked as 'Access Needed' until access is granted.")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .padding(14)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.orange.opacity(0.06))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(Color.orange.opacity(0.15), lineWidth: 1)
+                )
             }
         }
     }
@@ -243,107 +341,246 @@ struct OnboardingView: View {
     }
 }
 
-private struct PlatformToggleRow: View {
+// MARK: - PlatformCard
+
+private struct PlatformCard: View {
     let option: PlatformOption
     let isSelected: Bool
     let action: () -> Void
 
+    @State private var isHovered = false
+
     var body: some View {
         Button(action: action) {
-            HStack(alignment: .top, spacing: 10) {
-                Image(systemName: isSelected ? "checkmark.square.fill" : "square")
-                    .font(.system(size: 20, weight: .semibold))
-                    .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
-                    .frame(width: 24, height: 24)
+            VStack(alignment: .leading, spacing: 14) {
+                HStack {
+                    // Beautiful platform icon badge
+                    Image(systemName: iconName(for: option.id))
+                        .font(.system(size: 20, weight: .bold))
+                        .foregroundStyle(iconColor(for: option.id))
+                        .frame(width: 44, height: 44)
+                        .background(iconColor(for: option.id).opacity(0.12))
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+
+                    Spacer()
+
+                    // Selection indicator
+                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(isSelected ? Color.accentColor : Color.secondary.opacity(0.35))
+                }
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(option.displayName)
-                        .font(.system(size: 18, weight: .bold))
+                        .font(.system(size: 16, weight: .bold))
                         .foregroundStyle(.primary)
 
                     Text(option.detail)
-                        .font(.system(size: 14))
+                        .font(.system(size: 12))
                         .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            .contentShape(Rectangle())
+            .padding(18)
+            .background(Color(NSColor.controlBackgroundColor))
+            .clipShape(RoundedRectangle(cornerRadius: 14))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14)
+                    .stroke(isSelected ? Color.accentColor : (isHovered ? Color.primary.opacity(0.15) : Color.primary.opacity(0.06)), lineWidth: 1.5)
+            )
+            .scaleEffect(isHovered ? 1.015 : 1.0)
+            .animation(.spring(response: 0.25, dampingFraction: 0.7), value: isHovered)
+            .onHover { hovering in
+                isHovered = hovering
+            }
         }
         .buttonStyle(.plain)
     }
+
+    private func iconName(for id: String) -> String {
+        switch id {
+        case "codex": return "cpu.fill"
+        case "claude": return "sparkles"
+        case "gemini": return "moon.stars.fill"
+        case "copilot": return "square.stack.3d.up.fill"
+        default: return "folder.fill"
+        }
+    }
+
+    private func iconColor(for id: String) -> Color {
+        switch id {
+        case "codex": return .purple
+        case "claude": return .orange
+        case "gemini": return .blue
+        case "copilot": return .teal
+        default: return .secondary
+        }
+    }
 }
 
-private struct FolderAccessCard: View {
+// MARK: - FolderPermissionItem
+
+private struct FolderPermissionItem: Identifiable {
+    let id: String
+    let platform: PlatformOption
     let title: String
     let path: String
     let expectedPath: String
     let buttonTitle: String
+    let isRequired: Bool
+    let isXcode: Bool
+}
+
+// MARK: - FolderTableRow
+
+private struct FolderTableRow: View {
+    let item: FolderPermissionItem
     let isGranted: Bool
     let isSyncing: Bool
-    let isRequired: Bool
-    let action: () -> Void
+    let onChoose: () -> Void
+
+    @State private var isHovered = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 12) {
-                Text(title)
-                    .font(.system(size: 18, weight: .bold))
-                    .foregroundStyle(.primary)
+        HStack(spacing: 16) {
+            // Column 1: Target
+            HStack(spacing: 10) {
+                Image(systemName: iconName(for: item.platform.id))
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(iconColor(for: item.platform.id))
+                    .frame(width: 28, height: 28)
+                    .background(iconColor(for: item.platform.id).opacity(0.12))
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
 
-                Text(statusTitle)
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(statusColor)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 4)
-                    .background(statusBackground)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(item.title)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.primary)
+
+                    Text(item.isXcode ? "Xcode Environment" : "User Skills Store")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(width: 220, alignment: .leading)
+
+            // Column 2: Current Path / Expected Path
+            VStack(alignment: .leading, spacing: 4) {
+                if isGranted {
+                    HStack(spacing: 4) {
+                        Image(systemName: "folder.fill")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                        Text(item.path)
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                } else {
+                    HStack(spacing: 4) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.orange)
+                        Text("Not Configured")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(.orange)
+                    }
+                }
+
+                let displayExpected = item.isXcode ? item.expectedPath : "Usually `\(item.expectedPath)`."
+                Text(displayExpected)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            // Column 3: Status Badge
+            HStack {
+                if isSyncing {
+                    HStack(spacing: 4) {
+                        ProgressView()
+                            .progressViewStyle(.circular)
+                            .controlSize(.mini)
+                        Text("Syncing")
+                    }
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(.blue)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Color.blue.opacity(0.12))
                     .clipShape(Capsule())
+                } else if isGranted {
+                    HStack(spacing: 4) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 9))
+                        Text("Granted")
+                    }
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(.green)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Color.green.opacity(0.12))
+                    .clipShape(Capsule())
+                } else {
+                    HStack(spacing: 4) {
+                        Image(systemName: "lock.fill")
+                            .font(.system(size: 9))
+                        Text("Access Needed")
+                    }
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(.orange)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Color.orange.opacity(0.12))
+                    .clipShape(Capsule())
+                }
             }
+            .frame(width: 120, alignment: .center)
 
-            Text(isGranted ? path : "No folder selected")
-                .font(.system(size: 15))
-                .foregroundStyle(isGranted ? Color.secondary : Color.red)
-                .lineLimit(1)
-                .truncationMode(.middle)
-
-            Text(isGranted && !expectedPath.starts(with: "Choose") ? "Usually `\(expectedPath)`." : expectedPath)
-                .font(.system(size: 13))
-                .foregroundStyle(.secondary)
-
-            if !isGranted {
-                Text("SkillKit cannot scan, install, or sync this destination until you grant access.")
-                    .font(.system(size: 13))
-                    .foregroundStyle(.red)
+            // Column 4: Action Button
+            HStack {
+                if isGranted {
+                    Button("Change...", action: onChoose)
+                        .buttonStyle(.bordered)
+                        .controlSize(.regular)
+                } else {
+                    Button("Choose Folder", action: onChoose)
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.regular)
+                }
             }
-
-            Button(buttonTitle, action: action)
-                .buttonStyle(.borderedProminent)
-                .controlSize(.regular)
+            .frame(width: 110, alignment: .trailing)
         }
-        .padding(28)
-        .frame(maxWidth: isRequired ? 620 : 360, alignment: .leading)
-        .background(cardBackground)
-        .overlay(
-            RoundedRectangle(cornerRadius: 28)
-                .stroke(isGranted ? Color.clear : Color.red.opacity(0.35), lineWidth: 1.5)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 28))
+        .padding(.vertical, 10)
+        .padding(.horizontal, 16)
+        .background(isHovered ? Color.primary.opacity(0.015) : Color.clear)
+        .contentShape(Rectangle())
+        .onHover { hovering in
+            isHovered = hovering
+        }
     }
 
-    private var statusBackground: Color {
-        if isSyncing { return Color.blue.opacity(0.12) }
-        return isGranted ? Color.green.opacity(0.14) : Color.red.opacity(0.12)
+    private func iconName(for id: String) -> String {
+        switch id {
+        case "codex": return "cpu.fill"
+        case "claude": return "sparkles"
+        case "gemini": return "moon.stars.fill"
+        case "copilot": return "square.stack.3d.up.fill"
+        default: return "folder.fill"
+        }
     }
 
-    private var cardBackground: Color {
-        isGranted ? Color(NSColor.controlBackgroundColor) : Color.red.opacity(0.045)
-    }
-
-    private var statusTitle: String {
-        if isSyncing { return "Syncing" }
-        return isGranted ? "Granted" : "Access Needed"
-    }
-
-    private var statusColor: Color {
-        if isSyncing { return .blue }
-        return isGranted ? .green : .red
+    private func iconColor(for id: String) -> Color {
+        switch id {
+        case "codex": return .purple
+        case "claude": return .orange
+        case "gemini": return .blue
+        case "copilot": return .teal
+        default: return .secondary
+        }
     }
 }
