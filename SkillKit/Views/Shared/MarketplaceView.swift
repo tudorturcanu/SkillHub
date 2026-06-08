@@ -36,8 +36,6 @@ struct MarketplaceView: View {
                 resultsPane
                     .frame(minWidth: 330, idealWidth: 390)
 
-                Divider()
-
                 detailPane
                     .frame(minWidth: 420)
             }
