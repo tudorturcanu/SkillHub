@@ -29,8 +29,8 @@ struct SidebarView: View {
                 Label("Dashboard", systemImage: "gauge.with.dots.needle.bottom.50percent")
                     .tag(SidebarFilter.dashboard)
 
-                Label("Explore", systemImage: "compass")
-                    .tag(SidebarFilter.explore)
+                Label("Discover", systemImage: "sparkle.magnifyingglass")
+                    .tag(SidebarFilter.discover)
 
                 Label("Skills", systemImage: "doc.text")
                     .badge(allSkills.filter { $0.itemKind == .skill }.count)

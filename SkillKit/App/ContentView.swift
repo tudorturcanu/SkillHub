@@ -21,11 +21,11 @@ struct ContentView: View {
                 } detail: {
                     DashboardView()
                 }
-            } else if appState.sidebarFilter == .explore {
+            } else if appState.sidebarFilter == .discover {
                 NavigationSplitView(columnVisibility: $columnVisibility) {
                     SidebarView()
                 } detail: {
-                    ExploreView()
+                    DiscoverView()
                 }
             } else {
                 NavigationSplitView(columnVisibility: $columnVisibility) {
@@ -70,7 +70,7 @@ struct ContentView: View {
         }
         .onChange(of: appState.sidebarFilter) {
             appState.toolKindFilter = nil
-            if appState.sidebarFilter == .dashboard || appState.sidebarFilter == .explore {
+            if appState.sidebarFilter == .dashboard || appState.sidebarFilter == .discover {
                 appState.selectedSkill = nil
             }
         }

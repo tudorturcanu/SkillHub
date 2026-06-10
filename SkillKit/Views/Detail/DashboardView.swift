@@ -19,6 +19,7 @@ struct DashboardView: View {
                     // Left Column: Recent Skills & Quick Actions
                     VStack(alignment: .leading, spacing: 24) {
                         recentSkillsSection
+                        auditDiagnosticsSection
                         quickActionsSection
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -168,7 +169,7 @@ struct DashboardView: View {
                     icon: "globe.americas.fill",
                     color: Color.teal
                 ) {
-                    appState.sidebarFilter = .explore
+                    appState.sidebarFilter = .discover
                 }
             }
         }
@@ -227,6 +228,102 @@ struct DashboardView: View {
         }
         return counts.map { ToolCount(tool: $0.key, count: $0.value) }
             .sorted(by: { $0.count > $1.count })
+    }
+
+    // MARK: - System Health Audit
+    private var skillsWithIssues: [Skill] {
+        skills.filter(\.hasValidationWarnings)
+            .sorted(by: { $0.name < $1.name })
+    }
+
+    private var auditDiagnosticsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("System Health Audit")
+                .font(.headline)
+
+            let issues = skillsWithIssues
+            if issues.isEmpty {
+                HStack(spacing: 12) {
+                    Image(systemName: "checkmark.shield.fill")
+                        .font(.title2)
+                        .foregroundStyle(.green)
+                    
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("System Healthy")
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(.primary)
+                        Text("All local skills and rules are fully compliant with agent metadata standards.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    
+                    Spacer()
+                }
+                .padding(14)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color(NSColor.controlBackgroundColor))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(Color.green.opacity(0.15), lineWidth: 1)
+                )
+            } else {
+                let issuesToShow = Array(issues.prefix(4))
+                VStack(spacing: 0) {
+                    ForEach(issuesToShow) { skill in
+                        HStack {
+                            Image(systemName: skill.itemKind.icon)
+                                .foregroundStyle(skill.toolSource.color)
+                                .font(.system(size: 14))
+                                .frame(width: 20)
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(skill.name)
+                                    .font(.body)
+                                    .fontWeight(.medium)
+                                    .foregroundStyle(.primary)
+                                
+                                let warnings = skill.validationIssues.filter { $0.severity == .warning }
+                                Text(warnings.map(\.title).joined(separator: ", "))
+                                    .font(.caption)
+                                    .foregroundStyle(.orange)
+                            }
+
+                            Spacer()
+
+                            Button {
+                                appState.sidebarFilter = .needsReview
+                                appState.selectedSkill = skill
+                            } label: {
+                                Text("Resolve")
+                                    .font(.caption)
+                                    .fontWeight(.semibold)
+                                    .foregroundStyle(Color.accentColor)
+                                    .padding(.vertical, 4)
+                                    .padding(.horizontal, 10)
+                                    .background(Color.accentColor.opacity(0.1), in: Capsule())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .padding(.vertical, 10)
+                        .padding(.horizontal, 12)
+                        .contentShape(Rectangle())
+
+                        if skill != issuesToShow.last {
+                            Divider()
+                                .padding(.leading, 32)
+                        }
+                    }
+                }
+                .background(Color(NSColor.controlBackgroundColor))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(Color.primary.opacity(0.05), lineWidth: 1)
+                )
+            }
+        }
     }
 }
 

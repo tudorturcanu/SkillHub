@@ -52,6 +52,12 @@ final class SkillRegistry {
     // MARK: - Content Resolution
 
     func fetchContent(skill: RegistrySkill) async throws -> String {
+        for fallbackBranch in ["main", "master"] {
+            if let content = try? await fetchContentAtConventionalPaths(skill: skill, branch: fallbackBranch) {
+                return content
+            }
+        }
+
         let branch = try await getDefaultBranch(source: skill.source)
 
         if let content = try await fetchContentAtConventionalPaths(skill: skill, branch: branch) {

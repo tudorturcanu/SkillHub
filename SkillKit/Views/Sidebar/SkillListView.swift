@@ -36,7 +36,7 @@ struct SkillListView: View {
         var result = allSkills
 
         switch appState.sidebarFilter {
-        case .dashboard, .explore:
+        case .dashboard, .discover:
             result = []
         case .allSkills:
             result = result.filter { $0.itemKind == .skill }
@@ -119,7 +119,7 @@ struct SkillListView: View {
 
         var result = allSkills
         switch appState.sidebarFilter {
-        case .dashboard, .explore:
+        case .dashboard, .discover:
             result = []
         case .allSkills:
             result = result.filter { $0.itemKind == .skill }
@@ -155,7 +155,7 @@ struct SkillListView: View {
     private var title: String {
         switch appState.sidebarFilter {
         case .dashboard: "Dashboard"
-        case .explore: "Explore"
+        case .discover: "Discover"
         case .allSkills: "Skills"
         case .allRules: "Rules"
         case .needsReview: "Needs Review"
@@ -168,7 +168,7 @@ struct SkillListView: View {
     }
 
     private var isControlBarVisible: Bool {
-        appState.sidebarFilter != .dashboard && appState.sidebarFilter != .explore
+        appState.sidebarFilter != .dashboard && appState.sidebarFilter != .discover
     }
 
     /// Whether the current filter shows mixed item types (skills and agents together)
@@ -233,9 +233,9 @@ struct SkillListView: View {
             case .dashboard:
                 ContentUnavailableView("Dashboard", systemImage: "gauge.with.dots.needle.bottom.50percent",
                     description: Text("Select Skills or Rules to browse individual files."))
-            case .explore:
-                ContentUnavailableView("Explore", systemImage: "compass",
-                    description: Text("Explore new skills from the sidebar."))
+            case .discover:
+                ContentUnavailableView("Discover", systemImage: "sparkle.magnifyingglass",
+                    description: Text("Discover new skills from the library."))
             case .allRules:
                 ContentUnavailableView("No Rules", systemImage: "list.bullet.rectangle",
                     description: Text("No rules match the current filter."))
@@ -438,7 +438,7 @@ struct SkillListView: View {
                         }
                         Divider()
                         Button {
-                            appState.sidebarFilter = .explore
+                            appState.sidebarFilter = .discover
                         } label: {
                             Label("Browse Registry", systemImage: "globe")
                         }

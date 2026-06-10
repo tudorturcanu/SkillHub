@@ -8,7 +8,6 @@
 
 /* Begin PBXBuildFile section */
 		00FCCDB31742BCF2EF88D768 /* SkillDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A373F9CCEB98B407961DE06 /* SkillDetailView.swift */; };
-		066FE7A7C889439D1A497F0B /* ExploreView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D62E218197A52200519B5565 /* ExploreView.swift */; };
 		0F599D9EF7904AB3D14519E5 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 37B540A363ADC91B128028A7 /* PrivacyInfo.xcprivacy */; };
 		123BA59D8979C6DD7BE5A095 /* AppColorScheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29E46F5662D29155174EA24A /* AppColorScheme.swift */; };
 		1579648C7CFA56F1C49732A0 /* ClaudeCLIAgent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2264DA36FB045319CA009A3C /* ClaudeCLIAgent.swift */; };
@@ -35,6 +34,7 @@
 		66C0C2374744B305AAB05C62 /* AgentFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25C5C663A873BA71832C6F8C /* AgentFactory.swift */; };
 		678832D2376705066132344E /* RegistrySheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = D000D3A13A7555681B3EB055 /* RegistrySheet.swift */; };
 		683EB246B12E2AF6612D8635 /* SkillMetadataBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F97D73FC3826CA646DBA48E /* SkillMetadataBar.swift */; };
+		69C44B7E2E342DCACACC9EAD /* DiscoverView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28629C70AB752FF7B43B04BD /* DiscoverView.swift */; };
 		69F6C86D428F82C3F5C5AF6F /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 172F98F067A35DE28CAEC5E7 /* DashboardView.swift */; };
 		6AEFDDB489EB1F87712B5F88 /* CodexCLIAgent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AE600168C5172F5437B73E5 /* CodexCLIAgent.swift */; };
 		6CEA2EFB75E5DF6E39529632 /* ToolSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = 995E5B8D1808F440B66D0316 /* ToolSource.swift */; };
@@ -97,6 +97,7 @@
 		25C5C663A873BA71832C6F8C /* AgentFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentFactory.swift; sourceTree = "<group>"; };
 		26EC1CA1A41F1F25D08BC825 /* SchemaVersions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SchemaVersions.swift; sourceTree = "<group>"; };
 		2757DB65E4E979F9A01C9407 /* SkillPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkillPreviewView.swift; sourceTree = "<group>"; };
+		28629C70AB752FF7B43B04BD /* DiscoverView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscoverView.swift; sourceTree = "<group>"; };
 		29E46F5662D29155174EA24A /* AppColorScheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppColorScheme.swift; sourceTree = "<group>"; };
 		30C1322E1DB495417F902FE0 /* PlatformOption.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlatformOption.swift; sourceTree = "<group>"; };
 		317EC2FBBA6D2B20885F7853 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
@@ -137,7 +138,6 @@
 		D000D3A13A7555681B3EB055 /* RegistrySheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RegistrySheet.swift; sourceTree = "<group>"; };
 		D3B392D3D58E4A085BC7CA04 /* ToolFilterView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolFilterView.swift; sourceTree = "<group>"; };
 		D4E0510DE784A309C0F475D2 /* ComposePanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposePanel.swift; sourceTree = "<group>"; };
-		D62E218197A52200519B5565 /* ExploreView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExploreView.swift; sourceTree = "<group>"; };
 		D856424F08899585C4398352 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		DBC5658D7798B68500D7480B /* Skill.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Skill.swift; sourceTree = "<group>"; };
 		E956464198AF0DD41588CBC3 /* SkillScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkillScanner.swift; sourceTree = "<group>"; };
@@ -353,8 +353,8 @@
 				166071A496D4B741CDD0E7E4 /* ComposeModel.swift */,
 				D4E0510DE784A309C0F475D2 /* ComposePanel.swift */,
 				4D5FF8449949F4BB18AE52E6 /* DiffReviewPanel.swift */,
+				28629C70AB752FF7B43B04BD /* DiscoverView.swift */,
 				B5F03327FE2DB7BEA856A719 /* DuplicateSkillSheet.swift */,
-				D62E218197A52200519B5565 /* ExploreView.swift */,
 				B94C747B8AEF9B00305F6824 /* MarkdownMessageView.swift */,
 				016DB8E6814CD5D9B724D168 /* NewSkillSheet.swift */,
 				D000D3A13A7555681B3EB055 /* RegistrySheet.swift */,
@@ -461,9 +461,9 @@
 				69F6C86D428F82C3F5C5AF6F /* DashboardView.swift in Sources */,
 				BCB6F4F6DE604B63EF4C3CAF /* DiagnosticExporter.swift in Sources */,
 				78DD7C487A74440E3B0566E8 /* DiffReviewPanel.swift in Sources */,
+				69C44B7E2E342DCACACC9EAD /* DiscoverView.swift in Sources */,
 				711BF33013D4EF6455A09495 /* DuplicateSkillSheet.swift in Sources */,
 				947242D18514356BEE0CA0DB /* EditorTheme.swift in Sources */,
-				066FE7A7C889439D1A497F0B /* ExploreView.swift in Sources */,
 				8A40E1B7B4A007BF24158B47 /* FileWatcher.swift in Sources */,
 				C8D76DF64DC16051051FD5B1 /* FrontmatterParser.swift in Sources */,
 				ABFEFC70827B534716B0DF52 /* MDCParser.swift in Sources */,

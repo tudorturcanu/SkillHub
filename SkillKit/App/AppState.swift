@@ -20,7 +20,7 @@ final class AppState {
 
 enum SidebarFilter: Hashable {
     case dashboard
-    case explore
+    case discover
     case allSkills
     case allRules
     case needsReview

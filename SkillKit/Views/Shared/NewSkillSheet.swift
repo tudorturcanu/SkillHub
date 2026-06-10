@@ -9,6 +9,15 @@ enum SkillTemplate: String, CaseIterable, Identifiable {
     var id: String { self.rawValue }
 }
 
+enum RuleTemplate: String, CaseIterable, Identifiable {
+    case blank = "Blank"
+    case codeStyle = "Code Style & Formatting"
+    case concurrency = "Swift Concurrency Rules"
+    case gitGuidelines = "Git & Commits Guidelines"
+    
+    var id: String { self.rawValue }
+}
+
 struct NewSkillSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
@@ -16,6 +25,7 @@ struct NewSkillSheet: View {
     @State private var skillName = ""
     @State private var selectedTool: ToolSource = .agents
     @State private var selectedTemplate: SkillTemplate = .blank
+    @State private var selectedRuleTemplate: RuleTemplate = .blank
     @State private var errorMessage: String?
 
     private var itemKind: ItemKind { appState.newItemKind }
@@ -49,6 +59,12 @@ struct NewSkillSheet: View {
                 if itemKind == .skill {
                     Picker("Template", selection: $selectedTemplate) {
                         ForEach(SkillTemplate.allCases) { template in
+                            Text(template.rawValue).tag(template)
+                        }
+                    }
+                } else if itemKind == .rule {
+                    Picker("Template", selection: $selectedRuleTemplate) {
+                        ForEach(RuleTemplate.allCases) { template in
                             Text(template.rawValue).tag(template)
                         }
                     }
@@ -192,11 +208,37 @@ struct NewSkillSheet: View {
     private func generateBoilerplate(name: String, skillID: String, tool: ToolSource) -> String {
         switch itemKind {
         case .rule:
+            var ruleContent = "Add your assistant rule content here."
+            switch selectedRuleTemplate {
+            case .codeStyle:
+                ruleContent = """
+                1. **Naming Conventions**: Use `camelCase` for variables and functions, and `PascalCase` for types.
+                2. **Length Limit**: Keep functions short (under 40 lines) and focus on a single responsibility.
+                3. **Safety First**: Never use force unwrapping (`!`). Always use `if let`, `guard let`, or provide a default value.
+                4. **UI Layout**: Prefer declarative layout hierarchy, separating styling parameters logically.
+                """
+            case .concurrency:
+                ruleContent = """
+                1. **Main Actor Isolation**: Mark all UI-bound components, views, and `@Observable` models with `@MainActor`.
+                2. **Async Operations**: Prefer modern Swift concurrency (`async/await`, `Task`, `TaskGroup`) over GCD/DispatchQueues or completion handlers.
+                3. **Sendability**: Adhere to strict concurrency safety. Mark data structures crossing isolation barriers as `Sendable`.
+                4. **Non-blocking Code**: Ensure no synchronous, blocking operations (e.g. heavy calculations, synchronous disk reads) are run on `@MainActor`.
+                """
+            case .gitGuidelines:
+                ruleContent = """
+                1. **Conventional Commits**: Format commit messages as `type(scope): description`. Common types include `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`.
+                2. **Commit Headers**: Limit the subject line to 50 characters or less. Do not capitalize the first letter and do not end the subject line with a period.
+                3. **Body Description**: Use the imperative tone (e.g., "fix issue" instead of "fixed issue" or "fixes issue").
+                4. **Pre-commit Checks**: Compile, build, and run tests locally before committing. Never commit code that breaks the build.
+                """
+            case .blank:
+                break
+            }
+
             return """
             # \(name) (SkillKit Rule)
 
-            // Created via SkillKit.
-            Add your assistant rule content here.
+            \(ruleContent)
             """
         case .skill:
             var instructions = "Add your skill instructions here."

@@ -1,6 +1,6 @@
 import SwiftUI
 
-struct ExploreView: View {
+struct DiscoverView: View {
     @State private var registry = SkillRegistry()
     @State private var searchText = "git"
     @State private var results: [SkillRegistry.RegistrySkill] = []
@@ -16,7 +16,21 @@ struct ExploreView: View {
     @State private var installSuccess = false
     @State private var searchTask: Task<Void, Never>?
     @State private var contentTask: Task<Void, Never>?
+    @State private var sortOption: SortOption = .relevance
 
+    enum SortOption {
+        case relevance
+        case installs
+    }
+
+    private var sortedResults: [SkillRegistry.RegistrySkill] {
+        switch sortOption {
+        case .relevance:
+            return results
+        case .installs:
+            return results.sorted { $0.installs > $1.installs }
+        }
+    }
     private let featuredQueries = ["swift", "testing", "xcode", "supabase", "docs", "git"]
 
     private var installedAgents: [AgentTarget] {
@@ -25,7 +39,7 @@ struct ExploreView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            exploreHeader
+            discoverHeader
                 .padding(.horizontal, 28)
                 .padding(.top, 22)
                 .padding(.bottom, 16)
@@ -40,7 +54,7 @@ struct ExploreView: View {
                     .frame(minWidth: 440)
             }
         }
-        .navigationTitle("Explore")
+        .navigationTitle("Discover")
         .onAppear {
             selectedAgents = Set(installedAgents.map(\.id))
             if results.isEmpty {
@@ -53,7 +67,7 @@ struct ExploreView: View {
         }
     }
 
-    private var exploreHeader: some View {
+    private var discoverHeader: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .top, spacing: 16) {
                 Image(systemName: "compass.fill")
@@ -64,7 +78,7 @@ struct ExploreView: View {
 
                 VStack(alignment: .leading, spacing: 5) {
                     HStack(spacing: 10) {
-                        Text("Explore Skills")
+                        Text("Discover Library")
                             .font(.system(size: 28, weight: .bold, design: .rounded))
 
                         if isSearching {
@@ -73,7 +87,7 @@ struct ExploreView: View {
                         }
                     }
 
-                    Text("Search the registry, preview source skills, and install them into your local developer agents.")
+                    Text("Search the library, preview source skills, and install them into your local developer agents.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
@@ -85,7 +99,7 @@ struct ExploreView: View {
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(.secondary)
 
-                TextField("Search registry skills, tools, frameworks, or workflows...", text: $searchText)
+                TextField("Search library skills, tools, frameworks, or workflows...", text: $searchText)
                     .textFieldStyle(.plain)
                     .onSubmit {
                         runSearch(query: searchText)
@@ -138,10 +152,20 @@ struct ExploreView: View {
     private var resultsPane: some View {
         VStack(spacing: 0) {
             HStack {
-                Text(results.isEmpty ? "Registry" : "\(results.count) Registry Skills")
+                Text(results.isEmpty ? "Library" : "\(results.count) Skills")
                     .font(.system(size: 14, weight: .bold))
                     .foregroundStyle(.secondary)
                 Spacer()
+                
+                if !results.isEmpty {
+                    Picker("", selection: $sortOption) {
+                        Text("Relevance").tag(SortOption.relevance)
+                        Text("Most Installed").tag(SortOption.installs)
+                    }
+                    .pickerStyle(.menu)
+                    .frame(width: 140)
+                    .controlSize(.small)
+                }
             }
             .padding(.horizontal, 18)
             .padding(.vertical, 12)
@@ -149,7 +173,7 @@ struct ExploreView: View {
             Divider()
 
             if results.isEmpty && isSearching {
-                ProgressView("Searching registry...")
+                ProgressView("Searching library...")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if results.isEmpty {
                 ContentUnavailableView {
@@ -160,11 +184,11 @@ struct ExploreView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 List {
-                    ForEach(results) { skill in
+                    ForEach(sortedResults) { skill in
                         Button {
                             selectSkill(skill)
                         } label: {
-                            ExploreResultRow(
+                            DiscoverResultRow(
                                 skill: skill,
                                 isSelected: selectedSkill?.id == skill.id
                             )
@@ -193,7 +217,7 @@ struct ExploreView: View {
             ContentUnavailableView {
                 Label("Select a Skill", systemImage: "doc.text.magnifyingglass")
             } description: {
-                Text("Preview registry details and choose install targets.")
+                Text("Preview library details and choose install targets.")
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
@@ -523,9 +547,9 @@ struct ExploreView: View {
     }
 }
 
-// MARK: - ExploreResultRow
+// MARK: - DiscoverResultRow
 
-private struct ExploreResultRow: View {
+private struct DiscoverResultRow: View {
     let skill: SkillRegistry.RegistrySkill
     let isSelected: Bool
 
