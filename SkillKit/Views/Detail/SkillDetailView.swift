@@ -128,10 +128,12 @@ struct SkillDetailView: View {
         .navigationTitle(skill.name)
         .onAppear {
             document.load(from: skill)
+            markSkillOpened()
         }
         .onChange(of: skill.filePath) {
             autoSaveTask?.cancel()
             document.load(from: skill)
+            markSkillOpened()
         }
         .onChange(of: document.editorContent) {
             guard !skill.isReadOnly else { return }
@@ -278,5 +280,10 @@ struct SkillDetailView: View {
         } catch {
             activeAlert = .deleteError(error.localizedDescription)
         }
+    }
+
+    private func markSkillOpened() {
+        skill.lastOpened = .now
+        try? modelContext.save()
     }
 }

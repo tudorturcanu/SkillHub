@@ -38,6 +38,8 @@ struct SkillListView: View {
         switch appState.sidebarFilter {
         case .dashboard, .discover:
             result = []
+        case .recent:
+            result = result.filter { $0.lastOpened != nil }
         case .allSkills:
             result = result.filter { $0.itemKind == .skill }
         case .allRules:
@@ -50,6 +52,21 @@ struct SkillListView: View {
             result = result.filter { $0.toolSources.contains(tool) }
             if let kind = appState.toolKindFilter {
                 result = result.filter { $0.itemKind == kind }
+            }
+        case .customPlatform(let platformID):
+            if let platform = PlatformOption.customPlatforms.first(where: { $0.id == platformID }) {
+                result = result.filter { skill in
+                    guard skill.toolSource == .custom else { return false }
+                    let path = skill.filePath.lowercased()
+                    let platformSkills = platform.expandedSkillsPath.lowercased()
+                    let platformXcode = platform.expandedXcodePath?.lowercased()
+                    return path.hasPrefix(platformSkills) || (platformXcode != nil && path.hasPrefix(platformXcode!))
+                }
+                if let kind = appState.toolKindFilter {
+                    result = result.filter { $0.itemKind == kind }
+                }
+            } else {
+                result = []
             }
         case .collection(let collName):
             result = result.filter { skill in
@@ -89,13 +106,17 @@ struct SkillListView: View {
             return baseFilteredSkills.sorted { lhs, rhs in
                 lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
             }
+        case .lastOpened:
+            return baseFilteredSkills.sorted {
+                ($0.lastOpened ?? .distantPast) > ($1.lastOpened ?? .distantPast)
+            }
         case .modifiedNewest:
             return baseFilteredSkills.sorted { $0.fileModifiedDate > $1.fileModifiedDate }
         case .modifiedOldest:
             return baseFilteredSkills.sorted { $0.fileModifiedDate < $1.fileModifiedDate }
         case .platform:
             return baseFilteredSkills.sorted { lhs, rhs in
-                let platformComparison = lhs.toolSource.displayName.localizedStandardCompare(rhs.toolSource.displayName)
+                let platformComparison = lhs.toolSourceDisplayName.localizedStandardCompare(rhs.toolSourceDisplayName)
                 if platformComparison == .orderedSame {
                     return lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
                 }
@@ -121,6 +142,8 @@ struct SkillListView: View {
         switch appState.sidebarFilter {
         case .dashboard, .discover:
             result = []
+        case .recent:
+            result = result.filter { $0.lastOpened != nil }
         case .allSkills:
             result = result.filter { $0.itemKind == .skill }
         case .allRules:
@@ -133,6 +156,21 @@ struct SkillListView: View {
             result = result.filter { $0.toolSources.contains(tool) }
             if let kind = appState.toolKindFilter {
                 result = result.filter { $0.itemKind == kind }
+            }
+        case .customPlatform(let platformID):
+            if let platform = PlatformOption.customPlatforms.first(where: { $0.id == platformID }) {
+                result = result.filter { skill in
+                    guard skill.toolSource == .custom else { return false }
+                    let path = skill.filePath.lowercased()
+                    let platformSkills = platform.expandedSkillsPath.lowercased()
+                    let platformXcode = platform.expandedXcodePath?.lowercased()
+                    return path.hasPrefix(platformSkills) || (platformXcode != nil && path.hasPrefix(platformXcode!))
+                }
+                if let kind = appState.toolKindFilter {
+                    result = result.filter { $0.itemKind == kind }
+                }
+            } else {
+                result = []
             }
         case .collection(let collName):
             result = result.filter { skill in
@@ -156,11 +194,14 @@ struct SkillListView: View {
         switch appState.sidebarFilter {
         case .dashboard: "Dashboard"
         case .discover: "Discover"
+        case .recent: "Recent"
         case .allSkills: "Skills"
         case .allRules: "Rules"
         case .needsReview: "Needs Review"
         case .favorites: "Favorites"
         case .tool(let tool): tool.displayName
+        case .customPlatform(let platformID):
+            PlatformOption.customPlatforms.first(where: { $0.id == platformID })?.displayName ?? "Custom Platform"
         case .collection(let name): name
         case .server(let id):
             allSkills.first(where: { $0.remoteServer?.id == id })?.remoteServer?.label ?? "Remote"
@@ -176,6 +217,7 @@ struct SkillListView: View {
         switch appState.sidebarFilter {
         case .dashboard, .allSkills, .allRules: false
         case .tool: appState.toolKindFilter == nil
+        case .customPlatform: appState.toolKindFilter == nil
         default: true
         }
     }
@@ -236,6 +278,9 @@ struct SkillListView: View {
             case .discover:
                 ContentUnavailableView("Discover", systemImage: "sparkle.magnifyingglass",
                     description: Text("Discover new skills from the library."))
+            case .recent:
+                ContentUnavailableView("No Recent Items", systemImage: "clock.badge.checkmark",
+                    description: Text("Open a skill or rule to add it to Recent."))
             case .allRules:
                 ContentUnavailableView("No Rules", systemImage: "list.bullet.rectangle",
                     description: Text("No rules match the current filter."))
@@ -423,6 +468,13 @@ struct SkillListView: View {
                             Image(systemName: appState.toolKindFilter != nil ? "ellipsis.circle.fill" : "ellipsis.circle")
                         }
                     }
+                    Button {
+                        NotificationCenter.default.post(name: .customScanPathsChanged, object: nil)
+                    } label: {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                    }
+                    .help("Rescan local skills")
+
                     Menu {
                         Button {
                             appState.newItemKind = .skill
@@ -735,8 +787,8 @@ struct SkillRow: View {
 
             HStack(spacing: 3) {
                 ForEach(skill.toolSources, id: \.self) { tool in
-                    ToolIcon(tool: tool, size: 14)
-                        .help(tool.displayName)
+                    ToolIcon(tool: tool, customPlatform: tool == .custom ? skill.customPlatform : nil, size: 14)
+                        .help(tool == .custom ? (skill.customPlatform?.displayName ?? tool.displayName) : tool.displayName)
                         .opacity(0.6)
                 }
             }

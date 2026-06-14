@@ -21,11 +21,13 @@ final class AppState {
 enum SidebarFilter: Hashable {
     case dashboard
     case discover
+    case recent
     case allSkills
     case allRules
     case needsReview
     case favorites
     case tool(ToolSource)
+    case customPlatform(id: String)
     case collection(String)
     case server(String)
 }
@@ -68,6 +70,7 @@ enum SkillQuickFilter: String, CaseIterable, Identifiable {
 
 enum SkillSortOption: String, CaseIterable, Identifiable {
     case nameAscending
+    case lastOpened
     case modifiedNewest
     case modifiedOldest
     case platform
@@ -78,6 +81,7 @@ enum SkillSortOption: String, CaseIterable, Identifiable {
     var displayName: String {
         switch self {
         case .nameAscending: "Name"
+        case .lastOpened: "Last Opened"
         case .modifiedNewest: "Newest"
         case .modifiedOldest: "Oldest"
         case .platform: "Platform"
@@ -88,6 +92,7 @@ enum SkillSortOption: String, CaseIterable, Identifiable {
     var icon: String {
         switch self {
         case .nameAscending: "textformat"
+        case .lastOpened: "clock.badge.checkmark"
         case .modifiedNewest: "clock.arrow.circlepath"
         case .modifiedOldest: "clock"
         case .platform: "square.grid.2x2"

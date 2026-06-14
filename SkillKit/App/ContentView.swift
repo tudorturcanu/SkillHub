@@ -70,6 +70,9 @@ struct ContentView: View {
         }
         .onChange(of: appState.sidebarFilter) {
             appState.toolKindFilter = nil
+            if appState.sidebarFilter == .recent {
+                appState.skillSortOption = .lastOpened
+            }
             if appState.sidebarFilter == .dashboard || appState.sidebarFilter == .discover {
                 appState.selectedSkill = nil
             }

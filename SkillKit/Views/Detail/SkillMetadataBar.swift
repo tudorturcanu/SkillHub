@@ -7,6 +7,8 @@ struct SkillMetadataBar: View {
     @Query(sort: \SkillCollection.sortOrder) private var allCollections: [SkillCollection]
     @State private var showingCollectionPicker = false
     @State private var showingValidationIssues = false
+    @State private var showingSecurity = false
+    @State private var deepScanResult: SecurityScanResult?
 
     var body: some View {
         HStack(spacing: 16) {
@@ -53,6 +55,10 @@ struct SkillMetadataBar: View {
             Divider().frame(height: 16)
 
             validationStatusButton
+
+            Divider().frame(height: 16)
+
+            securityStatusButton
 
             Divider().frame(height: 16)
 
@@ -135,6 +141,33 @@ struct SkillMetadataBar: View {
         }
     }
 
+    /// Active scan: the deep (file-aware) result once requested, else the
+    /// fast in-memory body scan.
+    private var activeScan: SecurityScanResult {
+        deepScanResult ?? skill.securityScan
+    }
+
+    @ViewBuilder
+    private var securityStatusButton: some View {
+        let result = activeScan
+        Button {
+            showingSecurity.toggle()
+        } label: {
+            Image(systemName: result.isClean ? "shield" : (result.topSeverity?.icon ?? "shield.lefthalf.filled"))
+                .font(.caption)
+                .foregroundStyle(result.isClean ? .green : (result.topSeverity?.color ?? .secondary))
+        }
+        .buttonStyle(.plain)
+        .help(result.isClean ? "No security findings" : "\(result.rating) · risk score \(result.riskScore)")
+        .popover(isPresented: $showingSecurity) {
+            SecurityFindingsView(
+                result: activeScan,
+                canDeepScan: skill.isDirectory && !skill.isRemote,
+                onDeepScan: { deepScanResult = skill.deepSecurityScan() }
+            )
+        }
+    }
+
     private var collectionPickerContent: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text("Collections").font(.headline).padding(.bottom, 4)
@@ -167,6 +200,101 @@ struct SkillMetadataBar: View {
         }
         .padding()
         .frame(width: 200)
+    }
+}
+
+private struct SecurityFindingsView: View {
+    let result: SecurityScanResult
+    let canDeepScan: Bool
+    let onDeepScan: () -> Void
+    @State private var didDeepScan = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Security Scan")
+                    .font(.headline)
+                Spacer()
+                riskBadge
+            }
+
+            if result.isClean {
+                Label("No findings", systemImage: "checkmark.shield")
+                    .foregroundStyle(.green)
+                    .font(.subheadline)
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 10) {
+                        ForEach(result.findings.sorted { $0.severity > $1.severity }) { finding in
+                            findingRow(finding)
+                        }
+                    }
+                }
+                .frame(maxHeight: 240)
+            }
+
+            if canDeepScan {
+                Divider()
+                Button {
+                    onDeepScan()
+                    didDeepScan = true
+                } label: {
+                    Label(
+                        didDeepScan ? "Re-scan bundled scripts" : "Scan bundled scripts",
+                        systemImage: "doc.text.magnifyingglass"
+                    )
+                    .font(.caption)
+                }
+                .buttonStyle(.borderless)
+            }
+
+            Text("Static heuristic scan — flags risky patterns, not a guarantee. Review skills from untrusted sources yourself.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+        .padding()
+        .frame(width: 320, alignment: .leading)
+    }
+
+    private var riskBadge: some View {
+        Text("\(result.rating) · \(result.riskScore)")
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(result.isClean ? .green : (result.topSeverity?.color ?? .secondary))
+            .padding(.vertical, 2)
+            .padding(.horizontal, 8)
+            .background((result.topSeverity?.color ?? .green).opacity(0.12), in: Capsule())
+    }
+
+    private func findingRow(_ finding: SecurityFinding) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: finding.severity.icon)
+                .foregroundStyle(finding.severity.color)
+                .frame(width: 16)
+
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(finding.title)
+                        .font(.subheadline.weight(.semibold))
+                    if finding.heuristic {
+                        Text("heuristic")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 4)
+                            .background(.secondary.opacity(0.12), in: Capsule())
+                    }
+                }
+                Text("\(finding.category.rawValue) · line \(finding.lineNumber)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                if !finding.snippet.isEmpty {
+                    Text(finding.snippet)
+                        .font(.system(.caption2, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .truncationMode(.tail)
+                }
+            }
+        }
     }
 }
 

@@ -355,11 +355,11 @@ private struct PlatformCard: View {
             VStack(alignment: .leading, spacing: 14) {
                 HStack {
                     // Beautiful platform icon badge
-                    Image(systemName: iconName(for: option.id))
+                    Image(systemName: option.iconName)
                         .font(.system(size: 20, weight: .bold))
-                        .foregroundStyle(iconColor(for: option.id))
+                        .foregroundStyle(option.color)
                         .frame(width: 44, height: 44)
-                        .background(iconColor(for: option.id).opacity(0.12))
+                        .background(option.color.opacity(0.12))
                         .clipShape(RoundedRectangle(cornerRadius: 10))
 
                     Spacer()
@@ -397,26 +397,6 @@ private struct PlatformCard: View {
         }
         .buttonStyle(.plain)
     }
-
-    private func iconName(for id: String) -> String {
-        switch id {
-        case "codex": return "cpu.fill"
-        case "claude": return "sparkles"
-        case "gemini": return "moon.stars.fill"
-        case "copilot": return "square.stack.3d.up.fill"
-        default: return "folder.fill"
-        }
-    }
-
-    private func iconColor(for id: String) -> Color {
-        switch id {
-        case "codex": return .purple
-        case "claude": return .orange
-        case "gemini": return .blue
-        case "copilot": return .teal
-        default: return .secondary
-        }
-    }
 }
 
 // MARK: - FolderPermissionItem
@@ -446,11 +426,11 @@ private struct FolderTableRow: View {
         HStack(spacing: 16) {
             // Column 1: Target
             HStack(spacing: 10) {
-                Image(systemName: iconName(for: item.platform.id))
+                Image(systemName: item.platform.iconName)
                     .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(iconColor(for: item.platform.id))
+                    .foregroundStyle(item.platform.color)
                     .frame(width: 28, height: 28)
-                    .background(iconColor(for: item.platform.id).opacity(0.12))
+                    .background(item.platform.color.opacity(0.12))
                     .clipShape(RoundedRectangle(cornerRadius: 6))
 
                 VStack(alignment: .leading, spacing: 2) {
@@ -564,23 +544,4 @@ private struct FolderTableRow: View {
         }
     }
 
-    private func iconName(for id: String) -> String {
-        switch id {
-        case "codex": return "cpu.fill"
-        case "claude": return "sparkles"
-        case "gemini": return "moon.stars.fill"
-        case "copilot": return "square.stack.3d.up.fill"
-        default: return "folder.fill"
-        }
-    }
-
-    private func iconColor(for id: String) -> Color {
-        switch id {
-        case "codex": return .purple
-        case "claude": return .orange
-        case "gemini": return .blue
-        case "copilot": return .teal
-        default: return .secondary
-        }
-    }
 }

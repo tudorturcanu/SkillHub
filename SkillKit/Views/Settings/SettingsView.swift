@@ -47,6 +47,8 @@ struct SettingsView: View {
     @State private var selectedTab: SettingsTab = .platforms
     @State private var customPaths: [String] = []
     @State private var bookmarkRefreshTrigger = false
+    @State private var showingPlatformSheet = false
+    @State private var editingPlatform: PlatformOption? = nil
 
     var body: some View {
         VStack(spacing: 0) {
@@ -72,6 +74,32 @@ struct SettingsView: View {
         .fixedSize(horizontal: false, vertical: true)
         .onAppear {
             loadCustomPaths()
+        }
+        .sheet(isPresented: $showingPlatformSheet) {
+            CustomPlatformSheet(platformToEdit: editingPlatform) { platform in
+                var list = PlatformOption.customPlatforms
+                if let index = list.firstIndex(where: { $0.id == platform.id }) {
+                    let oldPlatform = list[index]
+                    if isPlatformEnabled(oldPlatform) {
+                        let oldPaths = [oldPlatform.expandedSkillsPath, oldPlatform.expandedXcodePath].compactMap(\.self)
+                        for path in oldPaths {
+                            customPaths.removeAll { $0 == path }
+                        }
+                        let newPaths = [platform.expandedSkillsPath, platform.expandedXcodePath].compactMap(\.self)
+                        for path in newPaths {
+                            if !customPaths.contains(path) {
+                                customPaths.append(path)
+                            }
+                        }
+                    }
+                    list[index] = platform
+                } else {
+                    list.append(platform)
+                }
+                PlatformOption.customPlatforms = list
+                saveCustomPaths()
+                bookmarkRefreshTrigger.toggle()
+            }
         }
     }
 
@@ -103,11 +131,12 @@ struct SettingsView: View {
                 .foregroundStyle(.secondary)
 
             VStack(spacing: 0) {
-                ForEach(PlatformOption.onboarding) { option in
+                ForEach(PlatformOption.allPlatforms) { option in
                     PlatformSettingsRow(
                         option: option,
                         isEnabled: isPlatformEnabled(option),
                         hasAccess: hasAccess(option.expandedSkillsPath),
+                        isCustom: PlatformOption.customPlatforms.contains(where: { $0.id == option.id }),
                         onToggle: { enabled in
                             setPlatform(option, enabled: enabled)
                         },
@@ -119,10 +148,17 @@ struct SettingsView: View {
                         },
                         onRescan: {
                             saveCustomPaths()
+                        },
+                        onEdit: {
+                            editingPlatform = option
+                            showingPlatformSheet = true
+                        },
+                        onDelete: {
+                            deletePlatform(option)
                         }
                     )
 
-                    if option.id != PlatformOption.onboarding.last?.id {
+                    if option.id != PlatformOption.allPlatforms.last?.id {
                         Divider()
                             .padding(.leading, 36)
                     }
@@ -134,6 +170,13 @@ struct SettingsView: View {
             HStack {
                 Button("Rescan Now") {
                     saveCustomPaths()
+                }
+
+                Button {
+                    editingPlatform = nil
+                    showingPlatformSheet = true
+                } label: {
+                    Label("Add Custom Platform...", systemImage: "plus.circle")
                 }
 
                 Spacer()
@@ -412,6 +455,18 @@ struct SettingsView: View {
             NSWorkspace.shared.activateFileViewerSelecting([url.deletingLastPathComponent()])
         }
     }
+
+    private func deletePlatform(_ option: PlatformOption) {
+        setPlatform(option, enabled: false)
+        var list = PlatformOption.customPlatforms
+        list.removeAll { $0.id == option.id }
+        PlatformOption.customPlatforms = list
+        UserDefaults.standard.removeObject(forKey: "bookmark_\(option.expandedSkillsPath)")
+        if let xcode = option.expandedXcodePath {
+            UserDefaults.standard.removeObject(forKey: "bookmark_\(xcode)")
+        }
+        bookmarkRefreshTrigger.toggle()
+    }
 }
 
 // MARK: - Tab Button
@@ -447,10 +502,13 @@ private struct PlatformSettingsRow: View {
     let option: PlatformOption
     let isEnabled: Bool
     let hasAccess: Bool
+    let isCustom: Bool
     let onToggle: (Bool) -> Void
     let onAuthorize: () -> Void
     let onReveal: () -> Void
     let onRescan: () -> Void
+    let onEdit: (() -> Void)?
+    let onDelete: (() -> Void)?
 
     var body: some View {
         HStack(spacing: 12) {
@@ -482,6 +540,25 @@ private struct PlatformSettingsRow: View {
             .toggleStyle(.checkbox)
 
             Spacer()
+
+            if isCustom {
+                Button {
+                    onEdit?()
+                } label: {
+                    Image(systemName: "pencil")
+                }
+                .buttonStyle(.plain)
+                .help("Edit custom platform")
+                
+                Button {
+                    onDelete?()
+                } label: {
+                    Image(systemName: "trash")
+                        .foregroundStyle(.red)
+                }
+                .buttonStyle(.plain)
+                .help("Delete custom platform")
+            }
 
             Button {
                 onAuthorize()

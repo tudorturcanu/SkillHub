@@ -18,36 +18,57 @@ enum SandboxBookmarkManager {
         }
     }
 
-    /// Resolves the bookmark for a path and executes the given closure with sandbox access
+    /// Resolves the bookmark for a path (or its closest bookmarked parent) and executes the given closure with sandbox access
     static func resolveAndAccess<T>(path: String, action: (URL) throws -> T) rethrows -> T {
-        let key = "bookmark_\(path)"
-        guard let bookmarkData = UserDefaults.standard.data(forKey: key) else {
-            // No bookmark found, fallback to standard URL (useful inside sandbox container, e.g. App Support)
-            AppLogger.fileIO.notice("No bookmark found for \(path), falling back to direct URL")
+        var currentPath = path
+        var bookmarkData: Data? = nil
+        var bookmarkedPath = path
+        
+        while !currentPath.isEmpty && currentPath != "/" {
+            let key = "bookmark_\(currentPath)"
+            if let data = UserDefaults.standard.data(forKey: key) {
+                bookmarkData = data
+                bookmarkedPath = currentPath
+                break
+            }
+            let parentURL = URL(fileURLWithPath: currentPath).deletingLastPathComponent()
+            let parentPath = parentURL.path
+            if parentPath == currentPath {
+                break
+            }
+            currentPath = parentPath
+        }
+        
+        guard let data = bookmarkData else {
+            // No bookmark found for the path or any parent, fallback to standard URL (useful inside sandbox container, e.g. App Support)
+            AppLogger.fileIO.notice("No bookmark found for \(path) or its parents, falling back to direct URL")
             let url = URL(fileURLWithPath: path)
             return try action(url)
         }
 
         var isStale = false
         do {
-            let url = try URL(
-                resolvingBookmarkData: bookmarkData,
+            let bookmarkedURL = try URL(
+                resolvingBookmarkData: data,
                 options: .withSecurityScope,
                 relativeTo: nil,
                 bookmarkDataIsStale: &isStale
             )
             if isStale {
-                saveBookmark(for: url)
+                saveBookmark(for: bookmarkedURL, customKey: bookmarkedPath)
             }
-            let success = url.startAccessingSecurityScopedResource()
+            let success = bookmarkedURL.startAccessingSecurityScopedResource()
             defer {
                 if success {
-                    url.stopAccessingSecurityScopedResource()
+                    bookmarkedURL.stopAccessingSecurityScopedResource()
                 }
             }
-            return try action(url)
+            
+            // We have access now, run the action on the original target path URL
+            let targetURL = URL(fileURLWithPath: path)
+            return try action(targetURL)
         } catch {
-            AppLogger.fileIO.error("Failed to resolve security-scoped bookmark for \(path): \(error.localizedDescription). Falling back to direct path.")
+            AppLogger.fileIO.error("Failed to resolve security-scoped bookmark for \(bookmarkedPath) (while accessing \(path)): \(error.localizedDescription). Falling back to direct path.")
             let url = URL(fileURLWithPath: path)
             return try action(url)
         }

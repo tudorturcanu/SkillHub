@@ -17,10 +17,16 @@ struct ToolBadge: View {
 /// Icon for the sidebar — uses custom logo asset or SF Symbol fallback
 struct ToolIcon: View {
     let tool: ToolSource
+    var customPlatform: PlatformOption? = nil
     var size: CGFloat = 16
 
     var body: some View {
-        if let assetName = tool.logoAssetName {
+        if let custom = customPlatform {
+            Image(systemName: custom.iconName)
+                .font(.system(size: size * 0.7))
+                .foregroundStyle(custom.color)
+                .frame(width: size, height: size)
+        } else if let assetName = tool.logoAssetName {
             Image(assetName)
                 .resizable()
                 .aspectRatio(contentMode: .fit)

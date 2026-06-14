@@ -71,6 +71,22 @@ extension Skill {
         toolSources.first ?? .custom
     }
 
+    var customPlatform: PlatformOption? {
+        let path = filePath.lowercased()
+        return PlatformOption.customPlatforms.first { platform in
+            let platformSkills = platform.expandedSkillsPath.lowercased()
+            let platformXcode = platform.expandedXcodePath?.lowercased()
+            return path.hasPrefix(platformSkills) || (platformXcode != nil && path.hasPrefix(platformXcode!))
+        }
+    }
+
+    var toolSourceDisplayName: String {
+        if toolSource == .custom, let custom = customPlatform {
+            return custom.displayName
+        }
+        return toolSource.displayName
+    }
+
     var installedPaths: [String] {
         get {
             guard let data = installedPathsData else { return [filePath] }

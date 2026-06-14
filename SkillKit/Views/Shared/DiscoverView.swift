@@ -48,10 +48,10 @@ struct DiscoverView: View {
 
             HSplitView {
                 resultsPane
-                    .frame(minWidth: 330, idealWidth: 390)
+                    .frame(minWidth: 260, idealWidth: 340)
 
                 detailPane
-                    .frame(minWidth: 440)
+                    .frame(minWidth: 340)
             }
         }
         .navigationTitle("Discover")
@@ -311,10 +311,10 @@ struct DiscoverView: View {
     }
 
     private func installBar(skill: SkillRegistry.RegistrySkill) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text("Install Targets")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.system(size: 13, weight: .bold))
                     .foregroundStyle(.secondary)
 
                 Spacer()
@@ -329,7 +329,7 @@ struct DiscoverView: View {
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(Color.accentColor)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.system(size: 11, weight: .semibold))
                 }
             }
 
@@ -338,16 +338,20 @@ struct DiscoverView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 120), spacing: 8)], spacing: 8) {
-                    ForEach(installedAgents) { agent in
-                        AgentTargetCard(
-                            agent: agent,
-                            isSelected: selectedAgents.contains(agent.id)
-                        ) {
-                            toggleAgent(agent)
+                ScrollView {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 120), spacing: 6)], spacing: 6) {
+                        ForEach(installedAgents) { agent in
+                            AgentTargetCard(
+                                agent: agent,
+                                isSelected: selectedAgents.contains(agent.id)
+                            ) {
+                                toggleAgent(agent)
+                            }
                         }
                     }
+                    .padding(.vertical, 2)
                 }
+                .frame(maxHeight: 85)
             }
 
             HStack {
@@ -357,7 +361,7 @@ struct DiscoverView: View {
 
                 if installSuccess {
                     Label("Successfully Installed!", systemImage: "checkmark.circle.fill")
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.system(size: 11, weight: .bold))
                         .foregroundStyle(.green)
                 }
 
@@ -380,9 +384,10 @@ struct DiscoverView: View {
                 .keyboardShortcut(.defaultAction)
                 .disabled(skillContent == nil || selectedAgents.isEmpty || isInstalling || installSuccess)
             }
-            .padding(.top, 4)
+            .padding(.top, 2)
         }
-        .padding(18)
+        .padding(.vertical, 12)
+        .padding(.horizontal, 16)
         .background(Color(NSColor.windowBackgroundColor).opacity(0.3))
     }
 
@@ -649,20 +654,20 @@ private struct AgentTargetCard: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
                 Image(systemName: agentIcon(for: agent.id))
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.system(size: 11, weight: .bold))
                     .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
-                    .frame(width: 26, height: 26)
+                    .frame(width: 20, height: 20)
                     .background(
                         (isSelected ? Color.accentColor : Color.secondary)
                             .opacity(0.1)
                     )
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .clipShape(RoundedRectangle(cornerRadius: 4))
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(agent.displayName)
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(.primary)
                         .lineLimit(1)
                 }
@@ -670,15 +675,15 @@ private struct AgentTargetCard: View {
                 Spacer(minLength: 0)
 
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.system(size: 12, weight: .bold))
                     .foregroundStyle(isSelected ? Color.accentColor : Color.secondary.opacity(0.3))
             }
-            .padding(.vertical, 8)
-            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .padding(.horizontal, 8)
             .background(isSelected ? Color.accentColor.opacity(0.06) : Color(NSColor.controlBackgroundColor))
-            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .clipShape(RoundedRectangle(cornerRadius: 6))
             .overlay(
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: 6)
                     .stroke(isSelected ? Color.accentColor.opacity(0.3) : (isHovered ? Color.primary.opacity(0.12) : Color.primary.opacity(0.04)), lineWidth: 1)
             )
             .scaleEffect(isHovered ? 1.02 : 1.0)

@@ -20,6 +20,7 @@ struct DashboardView: View {
                     VStack(alignment: .leading, spacing: 24) {
                         recentSkillsSection
                         auditDiagnosticsSection
+                        securityAuditSection
                         quickActionsSection
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -90,11 +91,13 @@ struct DashboardView: View {
             Text("Recent Activity")
                 .font(.headline)
 
-            let sorted = skills.sorted(by: { $0.fileModifiedDate > $1.fileModifiedDate })
+            let sorted = skills
+                .filter { $0.lastOpened != nil }
+                .sorted { ($0.lastOpened ?? .distantPast) > ($1.lastOpened ?? .distantPast) }
             let recents = Array(sorted.prefix(5))
 
             if recents.isEmpty {
-                Text("No skills created yet.")
+                Text("No recently opened items yet.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .padding(.vertical, 8)
@@ -102,7 +105,7 @@ struct DashboardView: View {
                 VStack(spacing: 0) {
                     ForEach(recents) { skill in
                         Button {
-                            appState.selectedSkill = skill
+                            openSkill(skill, in: .recent)
                         } label: {
                             HStack {
                                 Image(systemName: skill.itemKind.icon)
@@ -115,14 +118,14 @@ struct DashboardView: View {
                                         .font(.body)
                                         .fontWeight(.medium)
                                         .foregroundStyle(.primary)
-                                    Text(skill.toolSource.displayName)
+                                    Text(skill.toolSourceDisplayName)
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
                                 }
 
                                 Spacer()
 
-                                Text(skill.fileModifiedDate, style: .relative)
+                                Text(skill.lastOpened ?? skill.fileModifiedDate, style: .relative)
                                     .font(.caption2)
                                     .foregroundStyle(.tertiary)
                             }
@@ -230,6 +233,97 @@ struct DashboardView: View {
             .sorted(by: { $0.count > $1.count })
     }
 
+    // MARK: - Security Audit
+    private var riskySkills: [(skill: Skill, result: SecurityScanResult)] {
+        skills
+            .map { ($0, $0.securityScan) }
+            .filter { !$0.1.isClean }
+            .sorted { $0.1.riskScore > $1.1.riskScore }
+    }
+
+    private var securityAuditSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Security Audit")
+                .font(.headline)
+
+            let risky = riskySkills
+            if risky.isEmpty {
+                HStack(spacing: 12) {
+                    Image(systemName: "checkmark.shield.fill")
+                        .font(.title2)
+                        .foregroundStyle(.green)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("No Risks Detected")
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                        Text("Static scan found no risky patterns in your skills or rules.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                }
+                .padding(14)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color(NSColor.controlBackgroundColor))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(Color.green.opacity(0.15), lineWidth: 1)
+                )
+            } else {
+                VStack(spacing: 0) {
+                    let rows = Array(risky.prefix(4))
+                    ForEach(rows, id: \.skill.id) { entry in
+                        HStack {
+                            Image(systemName: entry.result.topSeverity?.icon ?? "shield.fill")
+                                .foregroundStyle(entry.result.topSeverity?.color ?? .secondary)
+                                .font(.system(size: 14))
+                                .frame(width: 20)
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(entry.skill.name)
+                                    .font(.body)
+                                    .fontWeight(.medium)
+                                Text(entry.result.findings
+                                        .sorted { $0.severity > $1.severity }
+                                        .prefix(2)
+                                        .map(\.title)
+                                        .joined(separator: ", "))
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
+
+                            Spacer()
+
+                            Text("\(entry.result.rating) · \(entry.result.riskScore)")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(entry.result.topSeverity?.color ?? .secondary)
+                                .padding(.vertical, 4)
+                                .padding(.horizontal, 10)
+                                .background((entry.result.topSeverity?.color ?? .secondary).opacity(0.12), in: Capsule())
+                        }
+                        .padding(.vertical, 10)
+                        .padding(.horizontal, 12)
+                        .contentShape(Rectangle())
+                        .onTapGesture { openSkill(entry.skill) }
+
+                        if entry.skill.id != rows.last?.skill.id {
+                            Divider().padding(.leading, 32)
+                        }
+                    }
+                }
+                .background(Color(NSColor.controlBackgroundColor))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(Color.primary.opacity(0.05), lineWidth: 1)
+                )
+            }
+        }
+    }
+
     // MARK: - System Health Audit
     private var skillsWithIssues: [Skill] {
         skills.filter(\.hasValidationWarnings)
@@ -328,6 +422,18 @@ struct DashboardView: View {
 }
 
 // MARK: - Subviews
+
+private extension DashboardView {
+    func openSkill(_ skill: Skill, in filter: SidebarFilter? = nil) {
+        appState.sidebarFilter = filter ?? {
+            switch skill.itemKind {
+            case .skill: return .allSkills
+            case .rule: return .allRules
+            }
+        }()
+        appState.selectedSkill = skill
+    }
+}
 
 private struct StatCard: View {
     let title: String

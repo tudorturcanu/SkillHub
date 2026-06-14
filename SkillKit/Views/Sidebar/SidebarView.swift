@@ -21,6 +21,22 @@ struct SidebarView: View {
         allSkills.filter { $0.toolSources.contains(tool) }.count
     }
 
+    private var activeCustomPlatforms: [PlatformOption] {
+        PlatformOption.customPlatforms.filter { platform in
+            customPlatformCount(platform) > 0
+        }
+    }
+
+    private func customPlatformCount(_ platform: PlatformOption) -> Int {
+        allSkills.filter { skill in
+            guard skill.toolSource == .custom else { return false }
+            let path = skill.filePath.lowercased()
+            let platformSkills = platform.expandedSkillsPath.lowercased()
+            let platformXcode = platform.expandedXcodePath?.lowercased()
+            return path.hasPrefix(platformSkills) || (platformXcode != nil && path.hasPrefix(platformXcode!))
+        }.count
+    }
+
     var body: some View {
         @Bindable var appState = appState
 
@@ -31,6 +47,10 @@ struct SidebarView: View {
 
                 Label("Discover", systemImage: "sparkle.magnifyingglass")
                     .tag(SidebarFilter.discover)
+
+                Label("Recent", systemImage: "clock.badge.checkmark")
+                    .badge(allSkills.filter { $0.lastOpened != nil }.count)
+                    .tag(SidebarFilter.recent)
 
                 Label("Skills", systemImage: "doc.text")
                     .badge(allSkills.filter { $0.itemKind == .skill }.count)
@@ -53,7 +73,7 @@ struct SidebarView: View {
                 CollectionListView()
             }
 
-            if !activeSources.isEmpty {
+            if !activeSources.isEmpty || !activeCustomPlatforms.isEmpty {
                 Section("Tools") {
                     ForEach(activeSources) { tool in
                         Label {
@@ -63,6 +83,17 @@ struct SidebarView: View {
                         }
                         .badge(toolCount(tool))
                         .tag(SidebarFilter.tool(tool))
+                    }
+
+                    ForEach(activeCustomPlatforms) { platform in
+                        Label {
+                            Text(platform.displayName)
+                        } icon: {
+                            Image(systemName: platform.iconName)
+                                .foregroundStyle(platform.color)
+                        }
+                        .badge(customPlatformCount(platform))
+                        .tag(SidebarFilter.customPlatform(id: platform.id))
                     }
                 }
             }
