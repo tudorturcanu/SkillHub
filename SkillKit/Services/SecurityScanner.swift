@@ -254,4 +254,35 @@ enum SecurityScanner {
         let raw = findings.reduce(0) { $0 + $1.severity.weight }
         return min(100, raw)
     }
+
+    // MARK: Report
+
+    /// Builds a shareable Markdown audit of all skills with findings.
+    static func report(for skills: [Skill]) -> String {
+        let scanned = skills.map { ($0, $0.securityScan) }
+        let risky = scanned
+            .filter { !$0.1.isClean }
+            .sorted { $0.1.riskScore > $1.1.riskScore }
+
+        let date = Date.now.formatted(date: .abbreviated, time: .shortened)
+        var out = "# SkillKit Security Report\n\n"
+        out += "_Generated \(date)_\n\n"
+        out += "Scanned **\(skills.count)** items — **\(risky.count)** with findings.\n"
+
+        if risky.isEmpty {
+            out += "\n✅ No risky patterns detected.\n"
+            return out
+        }
+
+        for (skill, result) in risky {
+            out += "\n## \(skill.name) — \(result.rating) (\(result.riskScore))\n\n"
+            for finding in result.findings.sorted(by: { $0.severity > $1.severity }) {
+                let tag = finding.heuristic ? " _(heuristic)_" : ""
+                out += "- **[\(finding.severity.label)]** \(finding.title)\(tag) — \(finding.category.rawValue), line \(finding.lineNumber)\n"
+            }
+        }
+
+        out += "\n---\n_Static heuristic scan. Flags risky patterns, not a guarantee — review skills from untrusted sources yourself._\n"
+        return out
+    }
 }

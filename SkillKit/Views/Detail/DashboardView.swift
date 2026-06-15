@@ -5,6 +5,7 @@ import Charts
 struct DashboardView: View {
     @Environment(AppState.self) private var appState
     @Query private var skills: [Skill]
+    @State private var reportCopied = false
 
     var body: some View {
         ScrollView {
@@ -174,6 +175,18 @@ struct DashboardView: View {
                 ) {
                     appState.sidebarFilter = .discover
                 }
+            }
+
+            ActionButton(
+                title: reportCopied ? "Copied!" : "Copy Security Report",
+                description: "Export a Markdown audit of all flagged skills",
+                icon: reportCopied ? "checkmark.circle.fill" : "doc.on.clipboard",
+                color: reportCopied ? .green : .indigo
+            ) {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(SecurityScanner.report(for: skills), forType: .string)
+                reportCopied = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2) { reportCopied = false }
             }
         }
     }

@@ -89,18 +89,31 @@ struct SkillDetailView: View {
     @State private var autoSaveTask: Task<Void, Never>?
     @State private var showingComposePanel = false
 
+    private enum ViewMode: String, CaseIterable, Identifiable {
+        case edit
+        case preview
+        case playground
+
+        var id: String { rawValue }
+    }
+
+    @State private var viewMode: ViewMode = .edit
+
     var body: some View {
         @Bindable var document = document
 
         VStack(spacing: 0) {
             ZStack(alignment: .bottomTrailing) {
-                if preferPreview {
+                switch viewMode {
+                case .preview:
                     SkillPreviewView(content: document.editorContent)
-                } else {
+                case .edit:
                     SkillEditorView(document: document, isEditable: !skill.isReadOnly)
+                case .playground:
+                    PromptPlaygroundView(skill: skill, promptTemplate: document.editorContent)
                 }
 
-                if !showingComposePanel && !skill.isReadOnly {
+                if viewMode != .playground && !showingComposePanel && !skill.isReadOnly {
                     composeFloatingButton
                 }
             }
@@ -129,6 +142,14 @@ struct SkillDetailView: View {
         .onAppear {
             document.load(from: skill)
             markSkillOpened()
+            viewMode = preferPreview ? .preview : .edit
+        }
+        .onChange(of: viewMode) {
+            if viewMode == .preview {
+                preferPreview = true
+            } else if viewMode == .edit {
+                preferPreview = false
+            }
         }
         .onChange(of: skill.filePath) {
             autoSaveTask?.cancel()
@@ -158,11 +179,13 @@ struct SkillDetailView: View {
         }
         .toolbar {
             ToolbarItem {
-                Picker("Mode", selection: $preferPreview) {
-                    Image(systemName: "pencil").tag(false)
-                    Image(systemName: "eye").tag(true)
+                Picker("Mode", selection: $viewMode) {
+                    Image(systemName: "pencil").tag(ViewMode.edit)
+                    Image(systemName: "eye").tag(ViewMode.preview)
+                    Image(systemName: "play.circle").tag(ViewMode.playground)
                 }
                 .pickerStyle(.segmented)
+                .help("Switch view mode: Edit, Preview, or Prompt Playground")
             }
             ToolbarItem {
                 Button {
