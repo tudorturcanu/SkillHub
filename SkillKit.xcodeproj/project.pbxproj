@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		00FCCDB31742BCF2EF88D768 /* SkillDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A373F9CCEB98B407961DE06 /* SkillDetailView.swift */; };
+		06AF54A7FFA850795338E816 /* MenuBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B83D653C841C87447AC3046E /* MenuBarView.swift */; };
 		0F599D9EF7904AB3D14519E5 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 37B540A363ADC91B128028A7 /* PrivacyInfo.xcprivacy */; };
 		123BA59D8979C6DD7BE5A095 /* AppColorScheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29E46F5662D29155174EA24A /* AppColorScheme.swift */; };
 		1579648C7CFA56F1C49732A0 /* ClaudeCLIAgent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2264DA36FB045319CA009A3C /* ClaudeCLIAgent.swift */; };
@@ -138,6 +139,7 @@
 		B058BB7CD34548E335E5F0D5 /* Collection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Collection.swift; sourceTree = "<group>"; };
 		B2A241215388F068B986A2A6 /* AgentConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentConfiguration.swift; sourceTree = "<group>"; };
 		B5F03327FE2DB7BEA856A719 /* DuplicateSkillSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DuplicateSkillSheet.swift; sourceTree = "<group>"; };
+		B83D653C841C87447AC3046E /* MenuBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarView.swift; sourceTree = "<group>"; };
 		B94C747B8AEF9B00305F6824 /* MarkdownMessageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownMessageView.swift; sourceTree = "<group>"; };
 		BA9BFBF4CF9A2AEB8D8228E3 /* SSHService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSHService.swift; sourceTree = "<group>"; };
 		C23E68CF20BB4455FD1F8FE9 /* SkillParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkillParser.swift; sourceTree = "<group>"; };
@@ -368,6 +370,7 @@
 				28629C70AB752FF7B43B04BD /* DiscoverView.swift */,
 				B5F03327FE2DB7BEA856A719 /* DuplicateSkillSheet.swift */,
 				B94C747B8AEF9B00305F6824 /* MarkdownMessageView.swift */,
+				B83D653C841C87447AC3046E /* MenuBarView.swift */,
 				016DB8E6814CD5D9B724D168 /* NewSkillSheet.swift */,
 				D000D3A13A7555681B3EB055 /* RegistrySheet.swift */,
 				C8B5683ABCAF02AF1788F3B5 /* ThinkingView.swift */,
@@ -483,6 +486,7 @@
 				BD19587C718A693CFBF86E20 /* MarkdownMessageView.swift in Sources */,
 				39AEA9BB8CCB30AAC6E20665 /* MarkdownRenderer.swift in Sources */,
 				40A3636EAD265234BD31ED9D /* MarkdownSyntaxHighlighter.swift in Sources */,
+				06AF54A7FFA850795338E816 /* MenuBarView.swift in Sources */,
 				5434DEC944152A963E7AFF53 /* NewSkillSheet.swift in Sources */,
 				F92A9434B1CEC5E87D151ADA /* OnboardingView.swift in Sources */,
 				25EE832F088FD3AF159B8D14 /* OneShotResponseParser.swift in Sources */,

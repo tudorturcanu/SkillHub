@@ -60,6 +60,13 @@ struct SkillKitApp: App {
             }
         }
 
+        MenuBarExtra("SkillKit", systemImage: "wrench.and.jaw") {
+            MenuBarView()
+                .environment(appState)
+                .modelContainer(sharedModelContainer)
+        }
+        .menuBarExtraStyle(.window)
+
         Settings {
             SettingsView()
                 .environment(appState)

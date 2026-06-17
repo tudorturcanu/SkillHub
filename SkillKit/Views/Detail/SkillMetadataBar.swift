@@ -48,7 +48,7 @@ struct SkillMetadataBar: View {
 
             Divider().frame(height: 16)
 
-            Text("\(characterCount) chars / \(wordCount) words")
+            Text("\(characterCount) chars / \(wordCount) words / ~\(tokenCount) tokens")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
@@ -121,6 +121,10 @@ struct SkillMetadataBar: View {
 
     private var characterCount: Int {
         skill.content.count
+    }
+
+    private var tokenCount: Int {
+        Int(Double(wordCount) / 0.75)
     }
 
     @ViewBuilder
