@@ -33,13 +33,13 @@ struct MenuBarView: View {
             } else {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 4) {
-                        ForEach(topSkills) { skill in
+                        ForEach(topSkills, id: \.persistentModelID) { skill in
                             Button {
                                 copyToClipboard(skill)
                             } label: {
                                 HStack {
                                     VStack(alignment: .leading) {
-                                        Text(skill.displayName)
+                                        Text(skill.name)
                                             .font(.body)
                                         Text(skill.skillDescription.isEmpty ? "No description" : skill.skillDescription)
                                             .font(.caption)
