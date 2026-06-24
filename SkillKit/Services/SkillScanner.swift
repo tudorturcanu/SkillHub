@@ -62,6 +62,7 @@ final class SkillScanner {
         (".config/amp/skills", .amp, .skill),
         (".opencode/skills", .opencode, .skill),
         (".hermes/skills", .hermes, .skill),
+        (".antigravity/skills", .antigravity, .skill),
     ]
 
     func scanAll() {

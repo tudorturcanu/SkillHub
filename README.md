@@ -34,7 +34,7 @@ SkillKit scans both **project-local directories** and **global configuration pat
 | **Hermes** | Hermes | `.hermes/skills` | `~/.agents/hermes/skills` |
 | **Augment** | Auggie | — | `~/.agents/augment/skills` |
 | **Pi** | Pi | — | `~/.agents/pi/agent/skills` |
-| **Antigravity** | Antigravity | — | `~/.agents/antigravity/skills` |
+| **Antigravity** | Antigravity | `.antigravity/skills` | `~/.agents/antigravity/skills` |
 
 ### User Source of Truth (`sotDir`)
 
