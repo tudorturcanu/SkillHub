@@ -1,6 +1,8 @@
 import SwiftUI
 import SwiftData
 
+#if DEBUG
+
 struct ReleaseReadinessView: View {
     @Environment(\.modelContext) private var modelContext
     @State private var copiedField: ListingField?
@@ -388,3 +390,5 @@ private struct ListingField: Identifiable, Equatable {
     let limit: Int
     let text: String
 }
+
+#endif

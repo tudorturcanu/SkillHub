@@ -10,7 +10,8 @@ struct SkillKitApp: App {
 
     init() {
         UserDefaults.standard.register(defaults: [
-            "sotDir": AppPaths.agentsDirectory
+            "sotDir": AppPaths.agentsDirectory,
+            "securityScanningEnabled": true
         ])
     }
 
@@ -51,8 +52,10 @@ struct SkillKitApp: App {
                 .disabled(appState.selectedSkill == nil)
             }
             CommandGroup(after: .help) {
+                #if DEBUG
                 Toggle("Enable Debug Logging", isOn: $debugLoggingEnabled)
                 Divider()
+                #endif
                 Button("Export Diagnostic Log…") {
                     let context = sharedModelContainer.mainContext
                     DiagnosticExporter.export(modelContext: context)

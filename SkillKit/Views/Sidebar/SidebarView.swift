@@ -6,6 +6,7 @@ struct SidebarView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Skill.name) private var allSkills: [Skill]
     @Query(sort: \RemoteServer.label) private var servers: [RemoteServer]
+    @AppStorage("securityScanningEnabled") private var securityScanningEnabled = true
     @State private var syncingServerIDs: Set<String> = []
     @State private var serverErrors: [String: String] = [:]
     @State private var showingErrorForServer: String?
@@ -19,6 +20,10 @@ struct SidebarView: View {
 
     private func toolCount(_ tool: ToolSource) -> Int {
         allSkills.filter { $0.toolSources.contains(tool) }.count
+    }
+
+    private var securityFindingCount: Int {
+        allSkills.filter { !$0.securityScan.isClean }.count
     }
 
     private var activeCustomPlatforms: [PlatformOption] {
@@ -63,6 +68,12 @@ struct SidebarView: View {
                 Label("Needs Review", systemImage: "exclamationmark.triangle")
                     .badge(allSkills.filter(\.hasValidationWarnings).count)
                     .tag(SidebarFilter.needsReview)
+
+                if securityScanningEnabled {
+                    Label("Security", systemImage: "shield.lefthalf.filled")
+                        .badge(securityFindingCount)
+                        .tag(SidebarFilter.securityReview)
+                }
 
                 Label("Favorites", systemImage: "star")
                     .badge(allSkills.filter(\.isFavorite).count)
@@ -153,6 +164,11 @@ struct SidebarView: View {
         }
         .listStyle(.sidebar)
         .navigationTitle("SkillKit")
+        .onChange(of: securityScanningEnabled) {
+            if !securityScanningEnabled, appState.sidebarFilter == .securityReview {
+                appState.sidebarFilter = .allSkills
+            }
+        }
     }
 
     private func syncServer(_ server: RemoteServer) {

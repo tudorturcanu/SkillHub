@@ -838,6 +838,7 @@ struct ComposePanel: View {
 
     @ViewBuilder
     private var debugLogButton: some View {
+        #if DEBUG
         if debugLoggingEnabled {
             Button {
                 showingDebugLogs = true
@@ -852,6 +853,7 @@ struct ComposePanel: View {
                     .frame(width: 600, height: 400)
             }
         }
+        #endif
     }
 
     // MARK: - Actions

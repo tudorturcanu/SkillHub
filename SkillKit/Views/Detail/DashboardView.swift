@@ -5,6 +5,7 @@ import Charts
 struct DashboardView: View {
     @Environment(AppState.self) private var appState
     @Query private var skills: [Skill]
+    @AppStorage("securityScanningEnabled") private var securityScanningEnabled = true
     @State private var reportCopied = false
 
     var body: some View {
@@ -21,7 +22,9 @@ struct DashboardView: View {
                     VStack(alignment: .leading, spacing: 24) {
                         recentSkillsSection
                         auditDiagnosticsSection
-                        securityAuditSection
+                        if securityScanningEnabled {
+                            securityAuditSection
+                        }
                         quickActionsSection
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -66,23 +69,64 @@ struct DashboardView: View {
                 title: "Total Skills & Rules",
                 value: "\(skills.count)",
                 icon: "doc.text.fill",
-                gradient: Gradient(colors: [Color.accentColor, Color.accentColor.opacity(0.7)])
+                gradient: Gradient(colors: [Color.accentColor, Color.accentColor.opacity(0.7)]),
+                action: {
+                    appState.sidebarFilter = .allSkills
+                }
             )
 
             StatCard(
                 title: "Starred Favorites",
                 value: "\(skills.filter(\.isFavorite).count)",
                 icon: "star.fill",
-                gradient: Gradient(colors: [Color.yellow, Color.orange])
+                gradient: Gradient(colors: [Color.yellow, Color.orange]),
+                action: {
+                    appState.sidebarFilter = .favorites
+                }
             )
 
-            let toolCount = Set(skills.flatMap(\.toolSources)).count
+            let activeSources = ToolSource.allCases.filter { tool in
+                guard tool.listable else { return false }
+                return skills.contains { $0.toolSources.contains(tool) }
+            }
+            let activeCustomPlatforms = PlatformOption.customPlatforms.filter { platform in
+                skills.contains { skill in
+                    guard skill.toolSource == .custom else { return false }
+                    let path = skill.filePath.lowercased()
+                    let platformSkills = platform.expandedSkillsPath.lowercased()
+                    let platformXcode = platform.expandedXcodePath?.lowercased()
+                    return path.hasPrefix(platformSkills) || (platformXcode != nil && path.hasPrefix(platformXcode!))
+                }
+            }
             StatCard(
                 title: "Active Platforms",
-                value: "\(toolCount)",
+                value: "\(activeSources.count + activeCustomPlatforms.count)",
                 icon: "cpu.fill",
-                gradient: Gradient(colors: [Color.teal, Color.green])
+                gradient: Gradient(colors: [Color.teal, Color.green]),
+                action: {
+                    if let firstTool = activeSources.first {
+                        appState.sidebarFilter = .tool(firstTool)
+                    } else if let firstPlatform = activeCustomPlatforms.first {
+                        appState.sidebarFilter = .customPlatform(id: firstPlatform.id)
+                    } else {
+                        appState.sidebarFilter = .allSkills
+                    }
+                }
             )
+
+            if securityScanningEnabled {
+                let securityFindings = skills.filter { !$0.securityScan.isClean }
+                StatCard(
+                    title: "Security Findings",
+                    value: "\(securityFindings.count)",
+                    icon: securityFindings.isEmpty ? "checkmark.shield.fill" : "shield.lefthalf.filled",
+                    gradient: Gradient(colors: securityFindings.isEmpty ? [Color.green, Color.mint] : [Color.orange, Color.red]),
+                    action: {
+                        appState.sidebarFilter = .securityReview
+                        appState.skillSortOption = .securityRisk
+                    }
+                )
+            }
         }
     }
 
@@ -177,16 +221,18 @@ struct DashboardView: View {
                 }
             }
 
-            ActionButton(
-                title: reportCopied ? "Copied!" : "Copy Security Report",
-                description: "Export a Markdown audit of all flagged skills",
-                icon: reportCopied ? "checkmark.circle.fill" : "doc.on.clipboard",
-                color: reportCopied ? .green : .indigo
-            ) {
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(SecurityScanner.report(for: skills), forType: .string)
-                reportCopied = true
-                DispatchQueue.main.asyncAfter(deadline: .now() + 2) { reportCopied = false }
+            if securityScanningEnabled {
+                ActionButton(
+                    title: reportCopied ? "Copied!" : "Copy Security Report",
+                    description: "Export a Markdown audit of all flagged skills",
+                    icon: reportCopied ? "checkmark.circle.fill" : "doc.on.clipboard",
+                    color: reportCopied ? .green : .indigo
+                ) {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(SecurityScanner.report(for: skills), forType: .string)
+                    reportCopied = true
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) { reportCopied = false }
+                }
             }
         }
     }
@@ -298,29 +344,38 @@ struct DashboardView: View {
                                 Text(entry.skill.name)
                                     .font(.body)
                                     .fontWeight(.medium)
-                                Text(entry.result.findings
-                                        .sorted { $0.severity > $1.severity }
-                                        .prefix(2)
-                                        .map(\.title)
-                                        .joined(separator: ", "))
+                                Text(entry.result.summaryText)
                                     .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                                Text(entry.result.categorySummaryText)
+                                    .font(.caption2)
                                     .foregroundStyle(.secondary)
                                     .lineLimit(1)
                             }
 
                             Spacer()
 
-                            Text("\(entry.result.rating) · \(entry.result.riskScore)")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(entry.result.topSeverity?.color ?? .secondary)
-                                .padding(.vertical, 4)
-                                .padding(.horizontal, 10)
-                                .background((entry.result.topSeverity?.color ?? .secondary).opacity(0.12), in: Capsule())
+                            VStack(alignment: .trailing, spacing: 2) {
+                                Text(entry.result.rating)
+                                    .font(.caption.weight(.semibold))
+                                Text("score \(entry.result.riskScore)")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .foregroundStyle(entry.result.topSeverity?.color ?? .secondary)
+                            .padding(.vertical, 4)
+                            .padding(.horizontal, 10)
+                            .background((entry.result.topSeverity?.color ?? .secondary).opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+                            .help(entry.result.scoreBreakdownText)
                         }
                         .padding(.vertical, 10)
                         .padding(.horizontal, 12)
                         .contentShape(Rectangle())
-                        .onTapGesture { openSkill(entry.skill) }
+                        .onTapGesture {
+                            appState.skillSortOption = .securityRisk
+                            openSkill(entry.skill, in: .securityReview)
+                        }
 
                         if entry.skill.id != rows.last?.skill.id {
                             Divider().padding(.leading, 32)
@@ -453,10 +508,29 @@ private struct StatCard: View {
     let value: String
     let icon: String
     let gradient: Gradient
+    var action: (() -> Void)? = nil
     
     @State private var isHovered = false
 
     var body: some View {
+        Group {
+            if let action {
+                Button(action: action) {
+                    cardContent
+                }
+                .buttonStyle(.plain)
+            } else {
+                cardContent
+            }
+        }
+        .scaleEffect(isHovered ? 1.02 : 1.0)
+        .animation(.spring(response: 0.3, dampingFraction: 0.6), value: isHovered)
+        .onHover { hovering in
+            isHovered = hovering
+        }
+    }
+    
+    private var cardContent: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text(title)
@@ -480,11 +554,6 @@ private struct StatCard: View {
             RoundedRectangle(cornerRadius: 12)
                 .stroke(Color.primary.opacity(0.05), lineWidth: 1)
         )
-        .scaleEffect(isHovered ? 1.02 : 1.0)
-        .animation(.spring(response: 0.3, dampingFraction: 0.6), value: isHovered)
-        .onHover { hovering in
-            isHovered = hovering
-        }
     }
 }
 

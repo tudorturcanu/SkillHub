@@ -8,7 +8,11 @@ extension Notification.Name {
 // MARK: - Settings Tab Definition
 
 enum SettingsTab: String, CaseIterable, Identifiable {
-    case platforms, scanDirs, release, appearance, data, about
+    case platforms, scanDirs, security
+    #if DEBUG
+    case release
+    #endif
+    case appearance, data, about
 
     var id: String { rawValue }
 
@@ -16,7 +20,10 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         switch self {
         case .platforms: "Platforms"
         case .scanDirs: "Scan Directories"
+        case .security: "Security"
+        #if DEBUG
         case .release: "Release"
+        #endif
         case .appearance: "Appearance"
         case .data: "Data Management"
         case .about: "About"
@@ -27,7 +34,10 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         switch self {
         case .platforms: "checkmark.rectangle.stack"
         case .scanDirs: "folder.badge.gearshape"
+        case .security: "shield.lefthalf.filled"
+        #if DEBUG
         case .release: "shippingbox"
+        #endif
         case .appearance: "paintpalette"
         case .data: "externaldrive"
         case .about: "info.circle"
@@ -42,6 +52,7 @@ struct SettingsView: View {
 
     @AppStorage("didCompleteOnboarding") private var didCompleteOnboarding = true
     @AppStorage("appColorScheme") private var appColorScheme: AppColorScheme = .system
+    @AppStorage("securityScanningEnabled") private var securityScanningEnabled = true
     @Environment(\.modelContext) private var modelContext
     @Query private var skills: [Skill]
     @State private var selectedTab: SettingsTab = .platforms
@@ -110,8 +121,12 @@ struct SettingsView: View {
             platformSettings
         case .scanDirs:
             scanSettings
+        case .security:
+            securitySettings
+        #if DEBUG
         case .release:
             ReleaseReadinessView()
+        #endif
         case .appearance:
             appearanceSettings
         case .data:
@@ -289,6 +304,40 @@ struct SettingsView: View {
         }
         .padding()
         .id(bookmarkRefreshTrigger)
+    }
+
+    private var securitySettings: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Security")
+                .font(.headline)
+
+            Text("Control the static review that flags risky skill and rule patterns.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            VStack(alignment: .leading, spacing: 10) {
+                Toggle(isOn: $securityScanningEnabled) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Enable Security Review")
+                            .font(.body.weight(.semibold))
+                        Text("Shows security findings in the sidebar, dashboard, list rows, and skill detail popover.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .toggleStyle(.checkbox)
+
+                if !securityScanningEnabled {
+                    Label("Security review is hidden while disabled. Existing skills are not changed.", systemImage: "eye.slash")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding()
+            .background(Color(NSColor.controlBackgroundColor))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+        }
+        .padding()
     }
 
     private func authorizeDirectory(path: String) {

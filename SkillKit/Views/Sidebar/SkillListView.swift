@@ -29,6 +29,7 @@ struct SkillListView: View {
     @Environment(AppState.self) private var appState
     @Query(sort: \Skill.name) private var allSkills: [Skill]
     @Query(sort: \SkillCollection.name) private var allCollections: [SkillCollection]
+    @AppStorage("securityScanningEnabled") private var securityScanningEnabled = true
     @State private var activeAlert: ActiveAlert?
     @State private var selectedSkillPaths: Set<String> = []
 
@@ -46,6 +47,8 @@ struct SkillListView: View {
             result = result.filter { $0.itemKind == .rule }
         case .needsReview:
             result = result.filter(\.hasValidationWarnings)
+        case .securityReview:
+            result = securityScanningEnabled ? result.filter { !$0.securityScan.isClean } : []
         case .favorites:
             result = result.filter { $0.isFavorite }
         case .tool(let tool):
@@ -83,6 +86,10 @@ struct SkillListView: View {
             result = result.filter(\.isFavorite)
         case .needsReview:
             result = result.filter(\.hasValidationWarnings)
+        case .securityFindings:
+            if securityScanningEnabled {
+                result = result.filter { !$0.securityScan.isClean }
+            }
         case .editable:
             result = result.filter { !$0.isReadOnly }
         case .readOnly:
@@ -129,6 +136,20 @@ struct SkillListView: View {
                 }
                 return lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
             }
+        case .securityRisk:
+            guard securityScanningEnabled else {
+                return baseFilteredSkills.sorted { lhs, rhs in
+                    lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
+                }
+            }
+            return baseFilteredSkills.sorted { lhs, rhs in
+                let lhsScan = lhs.securityScan
+                let rhsScan = rhs.securityScan
+                if lhsScan.riskScore != rhsScan.riskScore {
+                    return lhsScan.riskScore > rhsScan.riskScore
+                }
+                return lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
+            }
         }
     }
 
@@ -150,6 +171,8 @@ struct SkillListView: View {
             result = result.filter { $0.itemKind == .rule }
         case .needsReview:
             result = result.filter(\.hasValidationWarnings)
+        case .securityReview:
+            result = securityScanningEnabled ? result.filter { !$0.securityScan.isClean } : []
         case .favorites:
             result = result.filter(\.isFavorite)
         case .tool(let tool):
@@ -198,6 +221,7 @@ struct SkillListView: View {
         case .allSkills: "Skills"
         case .allRules: "Rules"
         case .needsReview: "Needs Review"
+        case .securityReview: "Security"
         case .favorites: "Favorites"
         case .tool(let tool): tool.displayName
         case .customPlatform(let platformID):
@@ -287,6 +311,9 @@ struct SkillListView: View {
             case .needsReview:
                 ContentUnavailableView("Nothing Needs Review", systemImage: "checkmark.seal",
                     description: Text("All indexed skills and rules have the expected metadata."))
+            case .securityReview:
+                ContentUnavailableView("No Security Findings", systemImage: "checkmark.shield",
+                    description: Text("Static scan found no risky patterns in this scope."))
             default:
                 ContentUnavailableView("No Skills", systemImage: "doc.text",
                     description: Text("No skills match the current filter."))
@@ -426,6 +453,7 @@ struct SkillListView: View {
                     SkillRow(
                         skill: skill,
                         showTypeBadge: showsTypeBadge,
+                        showSecurityStatus: securityScanningEnabled,
                         onToggleFavorite: {
                             skill.isFavorite.toggle()
                             try? modelContext.save()
@@ -635,13 +663,40 @@ struct SkillListView: View {
         .onChange(of: appState.searchText) {
             updateSelectionForCurrentFilter()
         }
+        .onChange(of: securityScanningEnabled) {
+            if !securityScanningEnabled {
+                if appState.sidebarFilter == .securityReview {
+                    appState.sidebarFilter = .allSkills
+                }
+                if appState.skillQuickFilter == .securityFindings {
+                    appState.skillQuickFilter = .all
+                }
+                if appState.skillSortOption == .securityRisk {
+                    appState.skillSortOption = .nameAscending
+                }
+            }
+            updateSelectionForCurrentFilter()
+        }
     }
 }
 
 private struct SkillListControlBar: View {
     @Environment(AppState.self) private var appState
+    @AppStorage("securityScanningEnabled") private var securityScanningEnabled = true
     let filteredCount: Int
     let totalCount: Int
+
+    private var quickFilters: [SkillQuickFilter] {
+        SkillQuickFilter.allCases.filter { filter in
+            securityScanningEnabled || filter != .securityFindings
+        }
+    }
+
+    private var sortOptions: [SkillSortOption] {
+        SkillSortOption.allCases.filter { option in
+            securityScanningEnabled || option != .securityRisk
+        }
+    }
 
     private var countText: String {
         if filteredCount == totalCount {
@@ -655,7 +710,7 @@ private struct SkillListControlBar: View {
 
         HStack(spacing: 8) {
             Menu {
-                ForEach(SkillQuickFilter.allCases) { filter in
+                ForEach(quickFilters) { filter in
                     Button {
                         appState.skillQuickFilter = filter
                     } label: {
@@ -673,7 +728,7 @@ private struct SkillListControlBar: View {
             .fixedSize()
 
             Menu {
-                ForEach(SkillSortOption.allCases) { option in
+                ForEach(sortOptions) { option in
                     Button {
                         appState.skillSortOption = option
                     } label: {
@@ -736,6 +791,7 @@ private struct SkillListControlBar: View {
 struct SkillRow: View {
     let skill: Skill
     var showTypeBadge: Bool = false
+    var showSecurityStatus: Bool = true
     var onToggleFavorite: () -> Void = {}
 
     var body: some View {
@@ -769,6 +825,14 @@ struct SkillRow: View {
                     .font(.caption2)
                     .foregroundStyle(.orange)
                     .help(skill.validationIssues.map(\.title).joined(separator: "\n"))
+            }
+
+            let securityScan = showSecurityStatus ? skill.securityScan : nil
+            if let securityScan, !securityScan.isClean {
+                Image(systemName: securityScan.topSeverity?.icon ?? "shield.lefthalf.filled")
+                    .font(.caption2)
+                    .foregroundStyle(securityScan.topSeverity?.color ?? .secondary)
+                    .help("\(securityScan.rating): \(securityScan.summaryText)\n\(securityScan.categorySummaryText)")
             }
 
             Spacer()

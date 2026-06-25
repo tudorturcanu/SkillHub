@@ -241,7 +241,7 @@ final class ClaudeCLIAgent: AgentSession {
             userMessage,
         ]
 
-        var env = ProcessInfo.processInfo.environment
+        var env = ToolSource.envWithResolvedPATH()
         env.removeValue(forKey: "CLAUDECODE")
         env["CLAUDE_CODE_ENTRYPOINT"] = "sdk-swift"
         env["CLAUDE_AGENT_SDK_VERSION"] = "0.2.121"

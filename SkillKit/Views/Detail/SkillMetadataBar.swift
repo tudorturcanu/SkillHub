@@ -5,6 +5,7 @@ struct SkillMetadataBar: View {
     @Bindable var skill: Skill
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \SkillCollection.sortOrder) private var allCollections: [SkillCollection]
+    @AppStorage("securityScanningEnabled") private var securityScanningEnabled = true
     @State private var showingCollectionPicker = false
     @State private var showingValidationIssues = false
     @State private var showingSecurity = false
@@ -58,9 +59,11 @@ struct SkillMetadataBar: View {
 
             Divider().frame(height: 16)
 
-            securityStatusButton
+            if securityScanningEnabled {
+                securityStatusButton
 
-            Divider().frame(height: 16)
+                Divider().frame(height: 16)
+            }
 
             Button {
                 showingCollectionPicker.toggle()
@@ -162,7 +165,7 @@ struct SkillMetadataBar: View {
                 .foregroundStyle(result.isClean ? .green : (result.topSeverity?.color ?? .secondary))
         }
         .buttonStyle(.plain)
-        .help(result.isClean ? "No security findings" : "\(result.rating) · risk score \(result.riskScore)")
+        .help(result.isClean ? "No security findings" : "\(result.rating) · \(result.summaryText)")
         .popover(isPresented: $showingSecurity) {
             SecurityFindingsView(
                 result: activeScan,
@@ -216,8 +219,13 @@ private struct SecurityFindingsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("Security Scan")
-                    .font(.headline)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Security Scan")
+                        .font(.headline)
+                    Text(result.isClean ? "Static scan found no risky patterns" : result.summaryText)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 Spacer()
                 riskBadge
             }
@@ -227,6 +235,31 @@ private struct SecurityFindingsView: View {
                     .foregroundStyle(.green)
                     .font(.subheadline)
             } else {
+                VStack(alignment: .leading, spacing: 8) {
+                    securitySummaryRow(
+                        icon: "scope",
+                        title: "Categories",
+                        value: result.categorySummaryText
+                    )
+                    securitySummaryRow(
+                        icon: result.topSeverity?.icon ?? "exclamationmark.triangle.fill",
+                        title: "Strongest signal",
+                        value: result.primaryConcernText
+                    )
+                    securitySummaryRow(
+                        icon: "number",
+                        title: "Score",
+                        value: "\(result.riskScore) / 100"
+                    )
+                    securitySummaryRow(
+                        icon: "function",
+                        title: "Why this score",
+                        value: result.scoreBreakdownText
+                    )
+                }
+                .padding(10)
+                .background(Color(NSColor.controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+
                 ScrollView {
                     VStack(alignment: .leading, spacing: 10) {
                         ForEach(result.findings.sorted { $0.severity > $1.severity }) { finding in
@@ -261,12 +294,29 @@ private struct SecurityFindingsView: View {
     }
 
     private var riskBadge: some View {
-        Text("\(result.rating) · \(result.riskScore)")
+        Text(result.isClean ? result.rating : "\(result.rating) · \(result.findingCountText)")
             .font(.caption.weight(.semibold))
             .foregroundStyle(result.isClean ? .green : (result.topSeverity?.color ?? .secondary))
             .padding(.vertical, 2)
             .padding(.horizontal, 8)
             .background((result.topSeverity?.color ?? .green).opacity(0.12), in: Capsule())
+    }
+
+    private func securitySummaryRow(icon: String, title: String, value: String) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: icon)
+                .foregroundStyle(.secondary)
+                .frame(width: 16)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Text(value)
+                    .font(.caption)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
     }
 
     private func findingRow(_ finding: SecurityFinding) -> some View {
@@ -289,6 +339,9 @@ private struct SecurityFindingsView: View {
                 }
                 Text("\(finding.category.rawValue) · line \(finding.lineNumber)")
                     .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text("+\(finding.severity.weight) \(finding.severity.label.lowercased()) severity points")
+                    .font(.caption2)
                     .foregroundStyle(.secondary)
                 if !finding.snippet.isEmpty {
                     Text(finding.snippet)

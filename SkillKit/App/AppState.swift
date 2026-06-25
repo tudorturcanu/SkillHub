@@ -25,6 +25,7 @@ enum SidebarFilter: Hashable {
     case allSkills
     case allRules
     case needsReview
+    case securityReview
     case favorites
     case tool(ToolSource)
     case customPlatform(id: String)
@@ -36,6 +37,7 @@ enum SkillQuickFilter: String, CaseIterable, Identifiable {
     case all
     case favorites
     case needsReview
+    case securityFindings
     case editable
     case readOnly
     case local
@@ -48,6 +50,7 @@ enum SkillQuickFilter: String, CaseIterable, Identifiable {
         case .all: "All"
         case .favorites: "Favorites"
         case .needsReview: "Needs Review"
+        case .securityFindings: "Security"
         case .editable: "Editable"
         case .readOnly: "Read-only"
         case .local: "Local"
@@ -60,6 +63,7 @@ enum SkillQuickFilter: String, CaseIterable, Identifiable {
         case .all: "line.3.horizontal.decrease.circle"
         case .favorites: "star"
         case .needsReview: "exclamationmark.triangle"
+        case .securityFindings: "shield.lefthalf.filled"
         case .editable: "pencil"
         case .readOnly: "lock"
         case .local: "macwindow"
@@ -75,6 +79,7 @@ enum SkillSortOption: String, CaseIterable, Identifiable {
     case modifiedOldest
     case platform
     case warningsFirst
+    case securityRisk
 
     var id: String { rawValue }
 
@@ -86,6 +91,7 @@ enum SkillSortOption: String, CaseIterable, Identifiable {
         case .modifiedOldest: "Oldest"
         case .platform: "Platform"
         case .warningsFirst: "Needs Review"
+        case .securityRisk: "Security Risk"
         }
     }
 
@@ -97,6 +103,7 @@ enum SkillSortOption: String, CaseIterable, Identifiable {
         case .modifiedOldest: "clock"
         case .platform: "square.grid.2x2"
         case .warningsFirst: "exclamationmark.triangle"
+        case .securityRisk: "shield.lefthalf.filled"
         }
     }
 }

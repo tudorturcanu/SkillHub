@@ -147,6 +147,62 @@ struct SecurityScanResult {
         default: "Severe risk"
         }
     }
+
+    var findingCountText: String {
+        "\(findings.count) finding\(findings.count == 1 ? "" : "s")"
+    }
+
+    var severityBreakdownText: String {
+        let parts = SecuritySeverity.allCases.compactMap { severity -> String? in
+            let count = findings.filter { $0.severity == severity }.count
+            guard count > 0 else { return nil }
+            return "\(count) \(severity.label.lowercased())"
+        }
+        return parts.joined(separator: ", ")
+    }
+
+    var categorySummaryText: String {
+        let categories = Array(Set(findings.map(\.category.rawValue))).sorted()
+        guard !categories.isEmpty else { return "No risky categories detected" }
+        return categories.joined(separator: ", ")
+    }
+
+    var primaryConcernText: String {
+        guard let finding = findings.sorted(by: { $0.severity > $1.severity }).first else {
+            return "No risky patterns detected"
+        }
+        return "\(finding.title) on line \(finding.lineNumber)"
+    }
+
+    var summaryText: String {
+        guard !isClean else { return "No risky patterns detected" }
+        return "\(findingCountText): \(severityBreakdownText)"
+    }
+
+    var rawScore: Int {
+        findings.reduce(0) { $0 + $1.severity.weight }
+    }
+
+    var scoreBreakdownText: String {
+        guard !isClean else { return "No findings, so the score is 0." }
+
+        let parts = SecuritySeverity.allCases.compactMap { severity -> String? in
+            let count = findings.filter { $0.severity == severity }.count
+            guard count > 0 else { return nil }
+            return "\(count) \(severity.label.lowercased()) x \(severity.weight)"
+        }
+
+        let formula = parts.joined(separator: " + ")
+        if rawScore > riskScore {
+            return "\(formula) = \(rawScore), capped at \(riskScore)."
+        }
+        return "\(formula) = \(riskScore)."
+    }
+
+    var scoreReasonText: String {
+        guard !isClean else { return "No risky patterns were detected." }
+        return "Score is based on severity weights: critical 40, high 20, medium 8, low 3."
+    }
 }
 
 enum SecurityScanner {
@@ -276,9 +332,10 @@ enum SecurityScanner {
 
         for (skill, result) in risky {
             out += "\n## \(skill.name) — \(result.rating) (\(result.riskScore))\n\n"
+            out += "\(result.scoreBreakdownText) \(result.scoreReasonText)\n\n"
             for finding in result.findings.sorted(by: { $0.severity > $1.severity }) {
                 let tag = finding.heuristic ? " _(heuristic)_" : ""
-                out += "- **[\(finding.severity.label)]** \(finding.title)\(tag) — \(finding.category.rawValue), line \(finding.lineNumber)\n"
+                out += "- **[\(finding.severity.label), +\(finding.severity.weight)]** \(finding.title)\(tag) — \(finding.category.rawValue), line \(finding.lineNumber)\n"
             }
         }
 

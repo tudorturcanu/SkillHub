@@ -26,7 +26,7 @@ struct PromptPlaygroundView: View {
         }
         .onAppear {
             scanVariables()
-            preFillMocks()
+            prefillContextValues()
         }
         .onChange(of: promptTemplate) {
             scanVariables()
@@ -114,9 +114,9 @@ struct PromptPlaygroundView: View {
             // Actions
             HStack(spacing: 8) {
                 Button {
-                    preFillMocks()
+                    prefillContextValues()
                 } label: {
-                    Label("Fill Mocks", systemImage: "wand.and.stars")
+                    Label("Fill Context", systemImage: "wand.and.stars")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.bordered)
@@ -273,9 +273,9 @@ struct PromptPlaygroundView: View {
         self.detectedVariableNames = Array(vars).sorted()
     }
     
-    private func preFillMocks() {
+    private func prefillContextValues() {
         for name in detectedVariableNames {
-            variables[name] = mockValue(for: name)
+            variables[name] = contextValue(for: name)
         }
     }
     
@@ -292,7 +292,7 @@ struct PromptPlaygroundView: View {
                lower == "file_path" || lower == "path" || lower == "frontmatter" || lower == "kind"
     }
     
-    private func mockValue(for name: String) -> String {
+    private func contextValue(for name: String) -> String {
         let lower = name.lowercased()
         if lower == "skill_name" || lower == "name" || lower == "title" {
             return skill.name

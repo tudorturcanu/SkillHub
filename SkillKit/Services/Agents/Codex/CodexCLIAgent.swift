@@ -228,7 +228,7 @@ final class CodexCLIAgent: AgentSession {
             userMessage,
         ]
 
-        proc.environment = ProcessInfo.processInfo.environment
+        proc.environment = ToolSource.envWithResolvedPATH()
         proc.currentDirectoryURL = workingDir
 
         let stdoutPipe = Pipe()

@@ -212,6 +212,50 @@ enum ToolSource: String, Codable, CaseIterable, Identifiable {
         }
     }
 
+    /// Prepares a environment dictionary with a populated PATH variable containing common
+    /// terminal search paths (Homebrew, nvm, local node, etc.) so subprocesses can locate Node.
+    static func envWithResolvedPATH() -> [String: String] {
+        var env = ProcessInfo.processInfo.environment
+        let home = AppPaths.userHomeDirectory
+        
+        var pathComponents = (env["PATH"] ?? "").components(separatedBy: ":").filter { !$0.isEmpty }
+        
+        // Add common locations where node / Homebrew / nvm reside
+        let searchPaths = [
+            "\(home)/.local/bin",
+            "/opt/homebrew/bin",
+            "/usr/local/bin",
+            "/usr/bin",
+            "/bin",
+            "/usr/sbin",
+            "/sbin"
+        ]
+        
+        for path in searchPaths {
+            if !pathComponents.contains(path) {
+                pathComponents.append(path)
+            }
+        }
+        
+        // Also look for nvm versions to add to the PATH
+        let fm = FileManager.default
+        let nvmDir = "\(home)/.nvm/versions/node"
+        if let nodeDirs = try? fm.contentsOfDirectory(atPath: nvmDir) {
+            for nodeDir in nodeDirs.sorted().reversed() {
+                let binDir = "\(nvmDir)/\(nodeDir)/bin"
+                var isDir: ObjCBool = false
+                if fm.fileExists(atPath: binDir, isDirectory: &isDir), isDir.boolValue {
+                    if !pathComponents.contains(binDir) {
+                        pathComponents.append(binDir)
+                    }
+                }
+            }
+        }
+        
+        env["PATH"] = pathComponents.joined(separator: ":")
+        return env
+    }
+
     /// Runs `<bin> --version` and parses semver. Returns nil if the binary is missing
     /// or the output doesn't match an expected pattern.
     func cliVersion() async -> (major: Int, minor: Int, patch: Int)? {
@@ -219,6 +263,7 @@ enum ToolSource: String, Codable, CaseIterable, Identifiable {
         return await Task.detached(priority: .userInitiated) { () -> (Int, Int, Int)? in
             let proc = Process()
             proc.executableURL = url
+            proc.environment = Self.envWithResolvedPATH()
             proc.arguments = ["--version"]
             let pipe = Pipe()
             proc.standardOutput = pipe

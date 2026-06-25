@@ -180,16 +180,14 @@ final class SkillEditorDocument {
                     let frontmatterToSave = parsed.frontmatter
                     let sizeToSave = editorContent.utf8.count
                     
-                    Task { @MainActor in
-                        if !nameToSave.isEmpty {
-                            skill.name = nameToSave
-                        }
-                        skill.skillDescription = descToSave
-                        skill.content = contentToSave
-                        skill.frontmatter = frontmatterToSave
-                        skill.fileModifiedDate = .now
-                        skill.fileSize = sizeToSave
+                    if !nameToSave.isEmpty {
+                        skill.name = nameToSave
                     }
+                    skill.skillDescription = descToSave
+                    skill.content = contentToSave
+                    skill.frontmatter = frontmatterToSave
+                    skill.fileModifiedDate = .now
+                    skill.fileSize = sizeToSave
                 }
             } catch {
                 await MainActor.run {
