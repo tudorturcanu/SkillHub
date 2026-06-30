@@ -327,6 +327,14 @@ struct SkillListView: View {
             skill.isFavorite.toggle()
             try? modelContext.save()
         }
+        Menu("Copy") {
+            Button("Content") {
+                copyToPasteboard(skill.content)
+            }
+            Button("File Path") {
+                copyToPasteboard(skill.filePath)
+            }
+        }
         if skill.canMakeGlobal {
             Button("Make Global") {
                 activeAlert = .confirmMakeGlobal(skill)
@@ -436,6 +444,18 @@ struct SkillListView: View {
         NSWorkspace.shared.activateFileViewerSelecting(urls)
     }
 
+    private func copyToPasteboard(_ value: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(value, forType: .string)
+    }
+
+    private func copySelectedPaths() {
+        let paths = selectedSkills
+            .map(\.filePath)
+            .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+        copyToPasteboard(paths.joined(separator: "\n"))
+    }
+
     var body: some View {
         @Bindable var appState = appState
 
@@ -539,6 +559,13 @@ struct SkillListView: View {
                                 setFavoriteForSelection(false)
                             } label: {
                                 Label("Unfavorite Selected", systemImage: "star")
+                            }
+
+                            Divider()
+                            Button {
+                                copySelectedPaths()
+                            } label: {
+                                Label("Copy Selected Paths", systemImage: "doc.on.doc")
                             }
 
                             if !allCollections.isEmpty {

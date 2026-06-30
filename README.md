@@ -10,6 +10,7 @@ Instead of letting your instructions lie scattered across Claude Code, Codex, Cu
 
 - **Unified Developer Dashboard**: View aggregated statistics (total skills, active rules, agents, and connected servers) alongside a real-time recent activity stream.
 - **Native SwiftUI Editor & Preview**: A fully syntax-highlighted Markdown editor with autosave indicators and a live side-by-side HTML preview that parses frontmatter metadata.
+- **Clipboard Handoff**: Copy a skill's content or file path directly from its context menu, including newline-separated paths for bulk selections.
 - **Interactive Agent Chat**: Refine or refactor your instructions by chatting directly with your active local agent (e.g. Claude Code, Codex) from within the app.
 - **Visual Diff Review**: Inspect, accept, or reject edits suggested by the agent through a native side-by-side diff review panel.
 - **Multi-Platform Probing**: Automatically detects and scans project-local config folders, global config directories, and even CLI/Desktop plugins.
