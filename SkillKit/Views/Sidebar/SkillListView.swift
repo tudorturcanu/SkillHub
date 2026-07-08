@@ -790,6 +790,30 @@ private struct SkillListControlBar: View {
             }
             .help("Search Scope")
 
+            if !appState.recentSearches.isEmpty {
+                Menu {
+                    ForEach(appState.recentSearches) { search in
+                        Button {
+                            appState.applyRecentSearch(search)
+                        } label: {
+                            Label(search.query, systemImage: search.scope.icon)
+                        }
+                    }
+
+                    Divider()
+
+                    Button(role: .destructive) {
+                        appState.clearRecentSearches()
+                    } label: {
+                        Label("Clear Recent Searches", systemImage: "trash")
+                    }
+                } label: {
+                    Label("Recent Searches", systemImage: "clock.arrow.circlepath")
+                        .labelStyle(.iconOnly)
+                }
+                .help("Recent Searches")
+            }
+
             Spacer(minLength: 8)
 
             Text(countText)

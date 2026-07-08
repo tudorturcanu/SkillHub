@@ -59,6 +59,7 @@
 		A94BA47D642FD65DAD545AA5 /* SkillKitApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1FFDF8C2EC65DD90A34521A6 /* SkillKitApp.swift */; };
 		AB24EDA61596A067169F622E /* PromptPlaygroundView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29166902653CDFFB9129177A /* PromptPlaygroundView.swift */; };
 		ABFEFC70827B534716B0DF52 /* MDCParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91E3EA379A13779674933ECB /* MDCParser.swift */; };
+		ADC1D32CAEC55D5F5128CD8D /* RecentSkillSearch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07B9C31D7B2C7F55DCCED85A /* RecentSkillSearch.swift */; };
 		B5565C20BE9857A694E306A2 /* StoreBootstrap.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000172ACC495C7D3FEA9FA32 /* StoreBootstrap.swift */; };
 		B7B2E8DAA4E8E3F74ACB78A5 /* Collection.swift in Sources */ = {isa = PBXBuildFile; fileRef = B058BB7CD34548E335E5F0D5 /* Collection.swift */; };
 		BCB6F4F6DE604B63EF4C3CAF /* DiagnosticExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77ABA46E2A4B2B345C792618 /* DiagnosticExporter.swift */; };
@@ -86,6 +87,7 @@
 /* Begin PBXFileReference section */
 		000172ACC495C7D3FEA9FA32 /* StoreBootstrap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreBootstrap.swift; sourceTree = "<group>"; };
 		016DB8E6814CD5D9B724D168 /* NewSkillSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewSkillSheet.swift; sourceTree = "<group>"; };
+		07B9C31D7B2C7F55DCCED85A /* RecentSkillSearch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecentSkillSearch.swift; sourceTree = "<group>"; };
 		09BF56AA40A6D62D18A16562 /* SecurityScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecurityScanner.swift; sourceTree = "<group>"; };
 		0AF69A33F94E30B6E14A4CD3 /* SkillRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkillRegistry.swift; sourceTree = "<group>"; };
 		166071A496D4B741CDD0E7E4 /* ComposeModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposeModel.swift; sourceTree = "<group>"; };
@@ -180,6 +182,7 @@
 				29E46F5662D29155174EA24A /* AppColorScheme.swift */,
 				B058BB7CD34548E335E5F0D5 /* Collection.swift */,
 				30C1322E1DB495417F902FE0 /* PlatformOption.swift */,
+				07B9C31D7B2C7F55DCCED85A /* RecentSkillSearch.swift */,
 				830DD2F45CADE53761E07DA6 /* RemoteServer.swift */,
 				26EC1CA1A41F1F25D08BC825 /* SchemaVersions.swift */,
 				DBC5658D7798B68500D7480B /* Skill.swift */,
@@ -492,6 +495,7 @@
 				25EE832F088FD3AF159B8D14 /* OneShotResponseParser.swift in Sources */,
 				D0C9EC5F17E145F4D9516462 /* PlatformOption.swift in Sources */,
 				AB24EDA61596A067169F622E /* PromptPlaygroundView.swift in Sources */,
+				ADC1D32CAEC55D5F5128CD8D /* RecentSkillSearch.swift in Sources */,
 				678832D2376705066132344E /* RegistrySheet.swift in Sources */,
 				5BDE440AB183DD9EF1E8CE04 /* ReleaseReadinessView.swift in Sources */,
 				E9C2F606FF6D2E93DE878076 /* RemoteServer.swift in Sources */,

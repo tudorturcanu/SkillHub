@@ -16,6 +16,28 @@ final class AppState {
     var skillQuickFilter: SkillQuickFilter = .all
     var skillSortOption: SkillSortOption = .nameAscending
     var skillSearchScope: SkillSearchScope = .all
+    var recentSearches: [RecentSkillSearch] = RecentSkillSearchStore.load()
+
+    func rememberCurrentSearch() {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard query.count >= 2 else { return }
+
+        let search = RecentSkillSearch(query: query, scope: skillSearchScope, lastUsed: .now)
+        recentSearches.removeAll { $0.id == search.id }
+        recentSearches.insert(search, at: 0)
+        RecentSkillSearchStore.save(recentSearches)
+    }
+
+    func applyRecentSearch(_ search: RecentSkillSearch) {
+        searchText = search.query
+        skillSearchScope = search.scope
+        rememberCurrentSearch()
+    }
+
+    func clearRecentSearches() {
+        recentSearches = []
+        RecentSkillSearchStore.save([])
+    }
 }
 
 enum SidebarFilter: Hashable {
@@ -108,7 +130,7 @@ enum SkillSortOption: String, CaseIterable, Identifiable {
     }
 }
 
-enum SkillSearchScope: String, CaseIterable, Identifiable {
+enum SkillSearchScope: String, CaseIterable, Identifiable, Codable {
     case all
     case title
     case description

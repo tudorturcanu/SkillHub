@@ -44,6 +44,9 @@ struct ContentView: View {
                     }
                 }
                 .searchable(text: $appState.searchText, prompt: "Search skills...")
+                .onSubmit(of: .search) {
+                    appState.rememberCurrentSearch()
+                }
             }
         }
         .overlay(alignment: .bottom) {
