@@ -394,8 +394,13 @@ struct DashboardView: View {
 
     // MARK: - System Health Audit
     private var skillsWithIssues: [Skill] {
-        skills.filter(\.hasValidationWarnings)
-            .sorted(by: { $0.name < $1.name })
+        skills.filter { !$0.healthReport.issues.isEmpty }
+            .sorted {
+                if $0.healthReport.score != $1.healthReport.score {
+                    return $0.healthReport.score < $1.healthReport.score
+                }
+                return $0.name.localizedStandardCompare($1.name) == .orderedAscending
+            }
     }
 
     private var auditDiagnosticsSection: some View {
@@ -446,13 +451,22 @@ struct DashboardView: View {
                                     .fontWeight(.medium)
                                     .foregroundStyle(.primary)
                                 
-                                let warnings = skill.validationIssues.filter { $0.severity == .warning }
-                                Text(warnings.map(\.title).joined(separator: ", "))
+                                let report = skill.healthReport
+                                Text(report.issues.prefix(3).map(\.title).joined(separator: ", "))
                                     .font(.caption)
-                                    .foregroundStyle(.orange)
+                                    .foregroundStyle(report.topSeverity?.color ?? .secondary)
                             }
 
                             Spacer()
+
+                            let report = skill.healthReport
+                            Text("\(report.score)")
+                                .font(.caption.bold())
+                                .monospacedDigit()
+                                .foregroundStyle(report.topSeverity?.color ?? .green)
+                                .padding(.vertical, 4)
+                                .padding(.horizontal, 8)
+                                .background((report.topSeverity?.color ?? .green).opacity(0.12), in: Capsule())
 
                             Button {
                                 appState.sidebarFilter = .needsReview

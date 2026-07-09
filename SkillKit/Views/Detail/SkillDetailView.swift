@@ -65,6 +65,7 @@ struct SkillDetailView: View {
         case confirmMakeGlobal
         case deleteError(String)
         case makeGlobalError(String)
+        case restoreError(String)
 
         var id: String {
             switch self {
@@ -76,6 +77,8 @@ struct SkillDetailView: View {
                 return "delete-error-\(message)"
             case .makeGlobalError(let message):
                 return "make-global-error-\(message)"
+            case .restoreError(let message):
+                return "restore-error-\(message)"
             }
         }
     }
@@ -88,6 +91,7 @@ struct SkillDetailView: View {
     @State private var activeAlert: ActiveAlert?
     @State private var autoSaveTask: Task<Void, Never>?
     @State private var showingComposePanel = false
+    @State private var showingLintFixes = false
 
     private enum ViewMode: String, CaseIterable, Identifiable {
         case edit
@@ -136,7 +140,7 @@ struct SkillDetailView: View {
 
             Divider()
 
-            SkillMetadataBar(skill: skill)
+            SkillMetadataBar(skill: skill, onRestoreSnapshot: restoreSnapshot)
         }
         .navigationTitle(skill.name)
         .onAppear {
@@ -194,6 +198,22 @@ struct SkillDetailView: View {
                 } label: {
                     Image(systemName: skill.isFavorite ? "star.fill" : "star")
                         .foregroundStyle(skill.isFavorite ? .yellow : .secondary)
+                }
+            }
+            if !skill.isReadOnly {
+                ToolbarItem {
+                    Button {
+                        showingLintFixes.toggle()
+                    } label: {
+                        Image(systemName: "wand.and.stars")
+                    }
+                    .help("Lint fixes")
+                    .popover(isPresented: $showingLintFixes) {
+                        SkillLintFixesView(
+                            fixes: SkillLinter.fixes(for: document.editorContent, skill: skill),
+                            onApply: applyLintFix
+                        )
+                    }
                 }
             }
             if !skill.isRemote {
@@ -268,6 +288,12 @@ struct SkillDetailView: View {
                     message: Text(message),
                     dismissButton: .default(Text("OK"))
                 )
+            case .restoreError(let message):
+                return Alert(
+                    title: Text("Restore Failed"),
+                    message: Text(message),
+                    dismissButton: .default(Text("OK"))
+                )
             }
         }
     }
@@ -289,7 +315,7 @@ struct SkillDetailView: View {
             try skill.makeGlobal()
             try? modelContext.save()
         } catch {
-            activeAlert = .makeGlobalError(error.localizedDescription)
+            activeAlert = .restoreError(error.localizedDescription)
         }
     }
 
@@ -308,5 +334,71 @@ struct SkillDetailView: View {
     private func markSkillOpened() {
         skill.lastOpened = .now
         try? modelContext.save()
+    }
+
+    private func restoreSnapshot(_ snapshot: SkillVersionSnapshot) {
+        guard !skill.isReadOnly, !skill.isRemote else { return }
+        do {
+            SkillVersionHistory.recordSnapshot(for: skill, content: document.editorContent, reason: "Before restore")
+            try SkillVersionHistory.restore(snapshot, to: skill)
+            document.load(from: skill)
+            try? modelContext.save()
+        } catch {
+            activeAlert = .makeGlobalError(error.localizedDescription)
+        }
+    }
+
+    private func applyLintFix(_ fix: SkillLintFix) {
+        SkillVersionHistory.recordSnapshot(for: skill, content: document.editorContent, reason: "Before lint fix")
+        document.editorContent = fix.apply(document.editorContent, skill)
+    }
+}
+
+private struct SkillLintFixesView: View {
+    let fixes: [SkillLintFix]
+    let onApply: (SkillLintFix) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Lint Fixes")
+                .font(.headline)
+
+            if fixes.isEmpty {
+                ContentUnavailableView(
+                    "No Fixes",
+                    systemImage: "checkmark.seal",
+                    description: Text("No safe mechanical fixes are available.")
+                )
+                .frame(height: 160)
+            } else {
+                ForEach(fixes) { fix in
+                    HStack(alignment: .top, spacing: 10) {
+                        Image(systemName: "wand.and.stars")
+                            .foregroundStyle(Color.accentColor)
+                            .frame(width: 18)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(fix.title)
+                                .font(.subheadline.bold())
+                            Text(fix.message)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Spacer()
+
+                        Button("Apply") {
+                            onApply(fix)
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                    }
+                    .padding(8)
+                    .background(Color(NSColor.controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+                }
+            }
+        }
+        .padding()
+        .frame(width: 360, alignment: .leading)
     }
 }

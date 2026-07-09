@@ -3,10 +3,14 @@ import SwiftData
 
 struct SkillMetadataBar: View {
     @Bindable var skill: Skill
+    var onRestoreSnapshot: (SkillVersionSnapshot) -> Void = { _ in }
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \SkillCollection.sortOrder) private var allCollections: [SkillCollection]
     @AppStorage("securityScanningEnabled") private var securityScanningEnabled = true
     @State private var showingCollectionPicker = false
+    @State private var showingHealth = false
+    @State private var showingCompatibility = false
+    @State private var showingHistory = false
     @State private var showingValidationIssues = false
     @State private var showingSecurity = false
     @State private var deepScanResult: SecurityScanResult?
@@ -55,6 +59,14 @@ struct SkillMetadataBar: View {
 
             Divider().frame(height: 16)
 
+            healthStatusButton
+
+            Divider().frame(height: 16)
+
+            compatibilityStatusButton
+
+            Divider().frame(height: 16)
+
             validationStatusButton
 
             Divider().frame(height: 16)
@@ -64,6 +76,10 @@ struct SkillMetadataBar: View {
 
                 Divider().frame(height: 16)
             }
+
+            versionHistoryButton
+
+            Divider().frame(height: 16)
 
             Button {
                 showingCollectionPicker.toggle()
@@ -128,6 +144,79 @@ struct SkillMetadataBar: View {
 
     private var tokenCount: Int {
         Int(Double(wordCount) / 0.75)
+    }
+
+    private var compatibilitySummaryStatus: SkillCompatibilityStatus {
+        skill.compatibilityReports
+            .map(\.status)
+            .max(by: { $0.rawValue < $1.rawValue }) ?? .compatible
+    }
+
+    @ViewBuilder
+    private var healthStatusButton: some View {
+        let report = skill.healthReport
+        Button {
+            showingHealth.toggle()
+        } label: {
+            Label {
+                Text("\(report.score)")
+                    .monospacedDigit()
+            } icon: {
+                Image(systemName: report.topSeverity?.icon ?? "heart.fill")
+            }
+            .font(.caption)
+            .foregroundStyle(report.topSeverity?.color ?? .green)
+        }
+        .buttonStyle(.plain)
+        .help("\(report.rating) health score: \(report.score)/100")
+        .popover(isPresented: $showingHealth) {
+            SkillHealthView(report: report)
+        }
+    }
+
+    @ViewBuilder
+    private var compatibilityStatusButton: some View {
+        let status = compatibilitySummaryStatus
+        Button {
+            showingCompatibility.toggle()
+        } label: {
+            Image(systemName: status.icon)
+                .font(.caption)
+                .foregroundStyle(status.color)
+        }
+        .buttonStyle(.plain)
+        .help("Agent compatibility: \(status.label)")
+        .popover(isPresented: $showingCompatibility) {
+            CompatibilityMatrixView(reports: skill.compatibilityReports)
+        }
+    }
+
+    @ViewBuilder
+    private var versionHistoryButton: some View {
+        let snapshots = SkillVersionHistory.snapshots(for: skill)
+        Button {
+            showingHistory.toggle()
+        } label: {
+            Label {
+                Text("\(snapshots.count)")
+                    .monospacedDigit()
+            } icon: {
+                Image(systemName: "clock.arrow.circlepath")
+            }
+            .font(.caption)
+            .foregroundStyle(snapshots.isEmpty ? Color.secondary : Color.blue)
+        }
+        .buttonStyle(.plain)
+        .help("\(snapshots.count) saved version\(snapshots.count == 1 ? "" : "s")")
+        .popover(isPresented: $showingHistory) {
+            VersionHistoryView(
+                snapshots: snapshots,
+                onRestore: { snapshot in
+                    onRestoreSnapshot(snapshot)
+                    showingHistory = false
+                }
+            )
+        }
     }
 
     @ViewBuilder
@@ -386,5 +475,153 @@ private struct ValidationIssuesView: View {
         }
         .padding()
         .frame(width: 280, alignment: .leading)
+    }
+}
+
+private struct SkillHealthView: View {
+    let report: SkillHealthReport
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Health")
+                        .font(.headline)
+                    Text(report.rating)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Text("\(report.score)/100")
+                    .font(.caption.bold())
+                    .monospacedDigit()
+                    .foregroundStyle(report.topSeverity?.color ?? .green)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background((report.topSeverity?.color ?? .green).opacity(0.12), in: Capsule())
+            }
+
+            if report.issues.isEmpty {
+                Label("No health issues", systemImage: "checkmark.seal")
+                    .foregroundStyle(.green)
+            } else {
+                ForEach(report.issues) { issue in
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: issue.severity.icon)
+                            .foregroundStyle(issue.severity.color)
+                            .frame(width: 16)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(issue.title)
+                                .font(.subheadline.bold())
+                            Text(issue.message)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+            }
+        }
+        .padding()
+        .frame(width: 320, alignment: .leading)
+    }
+}
+
+private struct CompatibilityMatrixView: View {
+    let reports: [SkillCompatibilityReport]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Compatibility")
+                .font(.headline)
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(reports) { report in
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack {
+                                Label(report.targetName, systemImage: report.status.icon)
+                                    .foregroundStyle(report.status.color)
+                                Spacer()
+                                Text(report.status.label)
+                                    .font(.caption.bold())
+                                    .foregroundStyle(report.status.color)
+                            }
+
+                            if report.findings.isEmpty {
+                                Text("No compatibility warnings detected.")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            } else {
+                                ForEach(report.findings) { finding in
+                                    Label(finding.message, systemImage: finding.status.icon)
+                                        .font(.caption)
+                                        .foregroundStyle(finding.status.color)
+                                }
+                            }
+                        }
+                        .padding(8)
+                        .background(Color(NSColor.controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+                    }
+                }
+            }
+            .frame(maxHeight: 320)
+        }
+        .padding()
+        .frame(width: 360, alignment: .leading)
+    }
+}
+
+private struct VersionHistoryView: View {
+    let snapshots: [SkillVersionSnapshot]
+    let onRestore: (SkillVersionSnapshot) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Version History")
+                .font(.headline)
+
+            if snapshots.isEmpty {
+                ContentUnavailableView(
+                    "No Versions",
+                    systemImage: "clock.arrow.circlepath",
+                    description: Text("Snapshots are created before saves.")
+                )
+                .frame(height: 160)
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(snapshots) { snapshot in
+                            HStack(alignment: .top, spacing: 10) {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(snapshot.displayTitle)
+                                        .font(.subheadline.bold())
+                                    Text(snapshot.reason)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                    Text("\(snapshot.content.count) chars")
+                                        .font(.caption)
+                                        .foregroundStyle(.tertiary)
+                                }
+
+                                Spacer()
+
+                                Button("Restore") {
+                                    onRestore(snapshot)
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+                            }
+                            .padding(8)
+                            .background(Color(NSColor.controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+                        }
+                    }
+                }
+                .frame(maxHeight: 300)
+            }
+        }
+        .padding()
+        .frame(width: 340, alignment: .leading)
     }
 }

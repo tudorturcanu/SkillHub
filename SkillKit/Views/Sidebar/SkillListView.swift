@@ -213,6 +213,10 @@ struct SkillListView: View {
         selectedSkills.filter { !$0.isReadOnly && !$0.isRemote }
     }
 
+    private var selectedGlobalizableSkills: [Skill] {
+        selectedSkills.filter(\.canMakeGlobal)
+    }
+
     private var title: String {
         switch appState.sidebarFilter {
         case .dashboard: "Dashboard"
@@ -456,6 +460,29 @@ struct SkillListView: View {
         copyToPasteboard(paths.joined(separator: "\n"))
     }
 
+    private func copySelectedSecurityReport() {
+        copyToPasteboard(SecurityScanner.report(for: selectedSkills))
+    }
+
+    private func exportSelectedSkills() {
+        do {
+            try SkillExporter.shared.export(skills: selectedSkills)
+        } catch {
+            activeAlert = .deleteError(error.localizedDescription)
+        }
+    }
+
+    private func makeSelectedSkillsGlobal() {
+        do {
+            for skill in selectedGlobalizableSkills {
+                try skill.makeGlobal()
+            }
+            try? modelContext.save()
+        } catch {
+            activeAlert = .makeGlobalError(error.localizedDescription)
+        }
+    }
+
     var body: some View {
         @Bindable var appState = appState
 
@@ -568,6 +595,20 @@ struct SkillListView: View {
                                 Label("Copy Selected Paths", systemImage: "doc.on.doc")
                             }
 
+                            Button {
+                                exportSelectedSkills()
+                            } label: {
+                                Label("Export Selected", systemImage: "square.and.arrow.up")
+                            }
+
+                            if securityScanningEnabled {
+                                Button {
+                                    copySelectedSecurityReport()
+                                } label: {
+                                    Label("Copy Selected Security Report", systemImage: "doc.on.clipboard")
+                                }
+                            }
+
                             if !allCollections.isEmpty {
                                 Divider()
                                 Menu("Collections") {
@@ -593,6 +634,14 @@ struct SkillListView: View {
                                     revealSelectedInFinder()
                                 } label: {
                                     Label("Reveal Selected in Finder", systemImage: "folder")
+                                }
+                            }
+
+                            if !selectedGlobalizableSkills.isEmpty {
+                                Button {
+                                    makeSelectedSkillsGlobal()
+                                } label: {
+                                    Label("Make Selected Global", systemImage: "globe")
                                 }
                             }
 

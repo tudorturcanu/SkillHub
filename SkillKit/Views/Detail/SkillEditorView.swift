@@ -85,6 +85,7 @@ final class SkillEditorDocument {
 
         SandboxBookmarkManager.resolveAndAccess(path: parentPath) { _ in
             do {
+                SkillVersionHistory.recordSnapshot(for: skill, content: fullFileContent, reason: "Before save")
                 try editorContent.write(toFile: skill.filePath, atomically: true, encoding: .utf8)
                 fullFileContent = editorContent
                 hasUnsavedChanges = false
@@ -167,8 +168,10 @@ final class SkillEditorDocument {
 
         Task {
             do {
+                let previousContent = fullFileContent
                 try await SSHService.writeFile(server, path: remotePath, content: editorContent)
                 await MainActor.run {
+                    SkillVersionHistory.recordSnapshot(for: skill, content: previousContent, reason: "Before remote save")
                     fullFileContent = editorContent
                     hasUnsavedChanges = false
                     isSavingRemote = false
