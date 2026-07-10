@@ -11,7 +11,17 @@ struct AgentTarget: Identifiable, Hashable {
     let cliBinaryName: String?
 
     var isInstalled: Bool {
-        return true
+        // "Global" is SkillKit's own library target, not a third-party app.
+        if id == "agents" { return true }
+
+        let fileManager = FileManager.default
+        if fileManager.fileExists(atPath: expandedSkillsDir) { return true }
+        if evidencePaths.map({ ($0 as NSString).expandingTildeInPath }).contains(where: fileManager.fileExists) {
+            return true
+        }
+        if let appBundleName, appBundleExists(appBundleName) { return true }
+        if let cliBinaryName, ToolSource.cliBinaryURL(cliBinaryName) != nil { return true }
+        return false
     }
 
     var expandedSkillsDir: String {
@@ -20,6 +30,12 @@ struct AgentTarget: Identifiable, Hashable {
 
     static var installed: [AgentTarget] {
         all.filter(\.isInstalled)
+    }
+
+    private func appBundleExists(_ name: String) -> Bool {
+        let home = AppPaths.userHomeDirectory
+        return ["/Applications/\(name).app", "\(home)/Applications/\(name).app"]
+            .contains { FileManager.default.fileExists(atPath: $0) }
     }
 
     static let all: [AgentTarget] = {
@@ -37,7 +53,7 @@ struct AgentTarget: Identifiable, Hashable {
                 displayName: "Global",
                 globalSkillsDir: "\(home)/.agents/skills",
                 skillFileName: "SKILL.md",
-                evidencePaths: [],
+                evidencePaths: ["\(home)/.agents"],
                 appBundleName: nil,
                 cliBinaryName: nil
             ),
@@ -46,72 +62,72 @@ struct AgentTarget: Identifiable, Hashable {
                 displayName: "Claude Code",
                 globalSkillsDir: "\(home)/.claude/skills",
                 skillFileName: "SKILL.md",
-                evidencePaths: [],
+                evidencePaths: ["\(home)/.claude"],
                 appBundleName: nil,
-                cliBinaryName: nil
+                cliBinaryName: "claude"
             ),
             AgentTarget(
                 id: "codex",
                 displayName: "Codex",
                 globalSkillsDir: "\(home)/.codex/skills",
                 skillFileName: "SKILL.md",
-                evidencePaths: [],
+                evidencePaths: ["\(home)/.codex"],
                 appBundleName: nil,
-                cliBinaryName: nil
+                cliBinaryName: "codex"
             ),
             AgentTarget(
                 id: "amp",
                 displayName: "Amp",
                 globalSkillsDir: "\(configHome)/amp/skills",
                 skillFileName: "SKILL.md",
-                evidencePaths: [],
+                evidencePaths: ["\(configHome)/amp"],
                 appBundleName: nil,
-                cliBinaryName: nil
+                cliBinaryName: "amp"
             ),
             AgentTarget(
                 id: "opencode",
                 displayName: "OpenCode",
                 globalSkillsDir: "\(configHome)/opencode/skills",
                 skillFileName: "SKILL.md",
-                evidencePaths: [],
+                evidencePaths: ["\(configHome)/opencode"],
                 appBundleName: nil,
-                cliBinaryName: nil
+                cliBinaryName: "opencode"
             ),
             AgentTarget(
                 id: "goose",
                 displayName: "Goose",
                 globalSkillsDir: "\(configHome)/goose/skills",
                 skillFileName: "SKILL.md",
-                evidencePaths: [],
+                evidencePaths: ["\(configHome)/goose"],
                 appBundleName: nil,
-                cliBinaryName: nil
+                cliBinaryName: "goose"
             ),
             AgentTarget(
                 id: "cursor",
                 displayName: "Cursor",
                 globalSkillsDir: "\(home)/.cursor/skills",
                 skillFileName: "SKILL.md",
-                evidencePaths: [],
-                appBundleName: nil,
-                cliBinaryName: nil
+                evidencePaths: ["\(home)/.cursor"],
+                appBundleName: "Cursor",
+                cliBinaryName: "cursor"
             ),
             AgentTarget(
                 id: "windsurf",
                 displayName: "Windsurf",
                 globalSkillsDir: "\(home)/.codeium/windsurf/skills",
                 skillFileName: "SKILL.md",
-                evidencePaths: [],
-                appBundleName: nil,
-                cliBinaryName: nil
+                evidencePaths: ["\(home)/.codeium/windsurf"],
+                appBundleName: "Windsurf",
+                cliBinaryName: "windsurf"
             ),
             AgentTarget(
                 id: "warp",
                 displayName: "Warp",
                 globalSkillsDir: "\(home)/.warp/skills",
                 skillFileName: "SKILL.md",
-                evidencePaths: [],
-                appBundleName: nil,
-                cliBinaryName: nil
+                evidencePaths: ["\(home)/.warp"],
+                appBundleName: "Warp",
+                cliBinaryName: "warp"
             ),
         ]
     }()

@@ -60,6 +60,7 @@ struct SettingsView: View {
     @State private var bookmarkRefreshTrigger = false
     @State private var showingPlatformSheet = false
     @State private var editingPlatform: PlatformOption? = nil
+    @State private var dataOperationMessage: String?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -111,6 +112,14 @@ struct SettingsView: View {
                 saveCustomPaths()
                 bookmarkRefreshTrigger.toggle()
             }
+        }
+        .alert("Data Management", isPresented: Binding(
+            get: { dataOperationMessage != nil },
+            set: { if !$0 { dataOperationMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) { dataOperationMessage = nil }
+        } message: {
+            Text(dataOperationMessage ?? "")
         }
     }
 
@@ -399,11 +408,27 @@ struct SettingsView: View {
             
             HStack(spacing: 16) {
                 Button("Export Data...") {
-                    try? SkillExporter.shared.export(skills: skills)
+                    do {
+                        if try SkillExporter.shared.export(skills: skills) {
+                            dataOperationMessage = "Export completed."
+                        }
+                    } catch {
+                        dataOperationMessage = "Export failed: \(error.localizedDescription)"
+                    }
                 }
                 
                 Button("Import Data...") {
-                    try? SkillExporter.shared.importData(modelContext: modelContext)
+                    do {
+                        let result = try SkillExporter.shared.importData(modelContext: modelContext)
+                        guard !result.wasCancelled else { return }
+                        var message = "Imported \(result.importedCount) item\(result.importedCount == 1 ? "" : "s")."
+                        if result.skippedCount > 0 {
+                            message += " Skipped \(result.skippedCount) duplicate or unsupported item\(result.skippedCount == 1 ? "" : "s")."
+                        }
+                        dataOperationMessage = message
+                    } catch {
+                        dataOperationMessage = "Import failed: \(error.localizedDescription)"
+                    }
                 }
             }
         }

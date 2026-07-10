@@ -56,15 +56,6 @@ struct PlatformOption: Identifiable, Hashable, Codable {
             iconColorName: "orange"
         ),
         PlatformOption(
-            id: "gemini",
-            displayName: "Gemini",
-            detail: "~/.gemini/skills",
-            skillsPath: "\(AppPaths.userHomeDirectory)/.gemini/skills",
-            xcodePath: nil,
-            iconName: "sparkles",
-            iconColorName: "blue"
-        ),
-        PlatformOption(
             id: "copilot",
             displayName: "GitHub Copilot",
             detail: "~/.copilot/skills",
@@ -91,4 +82,3 @@ struct PlatformOption: Identifiable, Hashable, Codable {
         onboarding + customPlatforms
     }
 }
-

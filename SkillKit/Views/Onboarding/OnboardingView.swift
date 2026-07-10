@@ -5,7 +5,6 @@ struct OnboardingView: View {
     @State private var selectedPlatformIDs = Set(PlatformOption.onboarding.map(\.id))
     @State private var step: OnboardingStep = .platforms
     @State private var grantedPaths: Set<String> = []
-    @State private var syncingPaths: Set<String> = []
 
     private enum OnboardingStep {
         case platforms
@@ -42,7 +41,7 @@ struct OnboardingView: View {
                     .font(.system(size: 32, weight: .bold))
                     .foregroundStyle(.primary)
 
-                Text("You can use SkillKit with Codex, Claude, Gemini, GitHub Copilot, or multiple platforms. You can change this later in Settings.")
+                Text("You can use SkillKit with Codex, Claude, GitHub Copilot, or multiple platforms. You can change this later in Settings.")
                     .font(.system(size: 15))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -171,8 +170,7 @@ struct OnboardingView: View {
                     ForEach(items) { item in
                         FolderTableRow(
                             item: item,
-                            isGranted: isGranted(item.path),
-                            isSyncing: syncingPaths.contains(item.path)
+                            isGranted: isGranted(item.path)
                         ) {
                             chooseFolder(for: item.path)
                         }
@@ -308,13 +306,6 @@ struct OnboardingView: View {
         UserDefaults.standard.set(false, forKey: "dismissed_\(grantedPath)")
         NotificationCenter.default.post(name: .customScanPathsChanged, object: nil)
 
-        syncingPaths.insert(canonicalPath)
-        Task {
-            try? await Task.sleep(for: .seconds(2))
-            await MainActor.run {
-                _ = syncingPaths.remove(canonicalPath)
-            }
-        }
     }
 
     private func completeOnboarding() {
@@ -417,7 +408,6 @@ private struct FolderPermissionItem: Identifiable {
 private struct FolderTableRow: View {
     let item: FolderPermissionItem
     let isGranted: Bool
-    let isSyncing: Bool
     let onChoose: () -> Void
 
     @State private var isHovered = false
@@ -480,20 +470,7 @@ private struct FolderTableRow: View {
 
             // Column 3: Status Badge
             HStack {
-                if isSyncing {
-                    HStack(spacing: 4) {
-                        ProgressView()
-                            .progressViewStyle(.circular)
-                            .controlSize(.mini)
-                        Text("Syncing")
-                    }
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(.blue)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(Color.blue.opacity(0.12))
-                    .clipShape(Capsule())
-                } else if isGranted {
+                if isGranted {
                     HStack(spacing: 4) {
                         Image(systemName: "checkmark.circle.fill")
                             .font(.system(size: 9))

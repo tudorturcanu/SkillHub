@@ -155,7 +155,21 @@ enum ToolSource: String, Codable, CaseIterable, Identifiable {
     /// Whether the tool is actually installed on this machine.
     /// In Sandbox, we return true for all listable/custom tools to ensure they can be used and managed.
     var isInstalled: Bool {
-        return true
+        if self == .agents { return true }
+
+        let fileManager = FileManager.default
+        if (globalPaths + globalAgentPaths + globalRulePaths)
+            .map({ ($0 as NSString).expandingTildeInPath })
+            .contains(where: fileManager.fileExists) {
+            return true
+        }
+
+        switch self {
+        case .claude, .codex:
+            return cliBinaryURL != nil
+        default:
+            return false
+        }
     }
 
     private static func appBundleExists(_ name: String) -> Bool {

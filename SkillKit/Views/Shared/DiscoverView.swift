@@ -56,7 +56,9 @@ struct DiscoverView: View {
         }
         .navigationTitle("Discover")
         .onAppear {
-            selectedAgents = Set(installedAgents.map(\.id))
+            // Installing a library item into every detected tool is surprising and can
+            // create configuration directories the user never intended to manage.
+            selectedAgents = installedAgents.contains(where: { $0.id == "agents" }) ? ["agents"] : []
             if results.isEmpty {
                 debounceSearch(query: searchText)
             }
