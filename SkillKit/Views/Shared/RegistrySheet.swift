@@ -65,8 +65,9 @@ struct RegistrySheet: View {
         }
         .frame(width: 560, height: 500)
         .onAppear {
-            // Pre-select all installed agents
-            selectedAgents = Set(installedAgents.map(\.id))
+            // Start with SkillKit's own library only. Installing into every detected
+            // tool by default is surprising and may create unwanted directories.
+            selectedAgents = installedAgents.contains(where: { $0.id == "agents" }) ? ["agents"] : []
             // Pre-populate search list with git skills
             searchText = "git"
             debounceSearch(query: "git")
