@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		00FCCDB31742BCF2EF88D768 /* SkillDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A373F9CCEB98B407961DE06 /* SkillDetailView.swift */; };
 		06AF54A7FFA850795338E816 /* MenuBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B83D653C841C87447AC3046E /* MenuBarView.swift */; };
+		088524309DEF29B1EA2E817A /* ServersSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F18E23E0783AB226C213C5BC /* ServersSettingsView.swift */; };
 		0F599D9EF7904AB3D14519E5 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 37B540A363ADC91B128028A7 /* PrivacyInfo.xcprivacy */; };
 		123BA59D8979C6DD7BE5A095 /* AppColorScheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29E46F5662D29155174EA24A /* AppColorScheme.swift */; };
 		1579648C7CFA56F1C49732A0 /* ClaudeCLIAgent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2264DA36FB045319CA009A3C /* ClaudeCLIAgent.swift */; };
@@ -163,6 +164,7 @@
 		E956464198AF0DD41588CBC3 /* SkillScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkillScanner.swift; sourceTree = "<group>"; };
 		EC2CD527D9B2C724ADB0BFC1 /* WizardTemplateType.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WizardTemplateType.swift; sourceTree = "<group>"; };
 		EFE038D2C1D974750C199068 /* MarkdownSyntaxHighlighter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownSyntaxHighlighter.swift; sourceTree = "<group>"; };
+		F18E23E0783AB226C213C5BC /* ServersSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServersSettingsView.swift; sourceTree = "<group>"; };
 		F19302BB14481C959770A85A /* SkillKitSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkillKitSettings.swift; sourceTree = "<group>"; };
 		F6A3B4830AF150A60E05C1E2 /* SkillValidation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkillValidation.swift; sourceTree = "<group>"; };
 		F925B7FF189232A4B650D0B0 /* SkillKitTextView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkillKitTextView.swift; sourceTree = "<group>"; };
@@ -268,6 +270,7 @@
 				605C75D61678CC12646B7E6A /* CustomPlatformSheet.swift */,
 				77ABA46E2A4B2B345C792618 /* DiagnosticExporter.swift */,
 				1C58B7FC3CDAF9DDDC589FDB /* ReleaseReadinessView.swift */,
+				F18E23E0783AB226C213C5BC /* ServersSettingsView.swift */,
 				317EC2FBBA6D2B20885F7853 /* SettingsView.swift */,
 			);
 			path = Settings;
@@ -516,6 +519,7 @@
 				6DF7753534850BB7312DDDA8 /* SchemaVersions.swift in Sources */,
 				3C07D5B0FB92833AEAAFC60F /* SearchService.swift in Sources */,
 				24A86FA71B99F30BAA1A72DA /* SecurityScanner.swift in Sources */,
+				088524309DEF29B1EA2E817A /* ServersSettingsView.swift in Sources */,
 				4B1439BF52E5D7617D9348C3 /* SettingsView.swift in Sources */,
 				44B04252F69898A3DBD1F346 /* SidebarView.swift in Sources */,
 				971609CC2E75435BC4033CCC /* Skill.swift in Sources */,
