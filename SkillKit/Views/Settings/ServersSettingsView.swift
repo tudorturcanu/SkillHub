@@ -10,6 +10,7 @@ struct ServersSettingsView: View {
     @State private var showingEditor = false
     @State private var testingIDs: Set<String> = []
     @State private var statusMessages: [String: String] = [:]
+    @State private var managementError: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -62,12 +63,24 @@ struct ServersSettingsView: View {
         ), presenting: serverPendingDeletion) { server in
             Button("Remove", role: .destructive) {
                 modelContext.delete(server)
-                try? modelContext.save()
+                do {
+                    try modelContext.save()
+                } catch {
+                    managementError = "Could not remove \(server.label): \(error.localizedDescription)"
+                }
                 serverPendingDeletion = nil
             }
             Button("Cancel", role: .cancel) { serverPendingDeletion = nil }
         } message: { server in
             Text("This also removes the \(server.skills.count) synced item\(server.skills.count == 1 ? "" : "s") from SkillKit. Their files remain on the server.")
+        }
+        .alert("Server Management Error", isPresented: Binding(
+            get: { managementError != nil },
+            set: { if !$0 { managementError = nil } }
+        )) {
+            Button("OK", role: .cancel) { managementError = nil }
+        } message: {
+            Text(managementError ?? "")
         }
     }
 

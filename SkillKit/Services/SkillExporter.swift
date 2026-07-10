@@ -52,45 +52,55 @@ final class SkillExporter {
         var existingPaths = Set(existingSkills.map(\.filePath))
         var importedCount = 0
         var skippedCount = 0
+        var writtenURLs: [URL] = []
 
-        for imported in importedSkills {
-            guard let destination = destination(for: imported) else {
-                skippedCount += 1
-                continue
+        do {
+            for imported in importedSkills {
+                guard let destination = destination(for: imported) else {
+                    skippedCount += 1
+                    continue
+                }
+
+                let filePath = destination.path
+                guard !existingPaths.contains(filePath), !FileManager.default.fileExists(atPath: filePath) else {
+                    skippedCount += 1
+                    continue
+                }
+
+                let fullContent = serializedContent(for: imported)
+                try FileManager.default.createDirectory(
+                    at: destination.deletingLastPathComponent(),
+                    withIntermediateDirectories: true
+                )
+                try fullContent.write(to: destination, atomically: true, encoding: .utf8)
+                writtenURLs.append(destination)
+
+                let skill = Skill(
+                    filePath: filePath,
+                    toolSource: imported.toolSource,
+                    isDirectory: imported.isDirectory,
+                    name: imported.name,
+                    skillDescription: imported.skillDescription,
+                    content: imported.content,
+                    frontmatter: imported.frontmatter,
+                    fileModifiedDate: .now,
+                    fileSize: fullContent.utf8.count,
+                    isGlobal: true,
+                    resolvedPath: filePath,
+                    kind: imported.kind
+                )
+                modelContext.insert(skill)
+                existingPaths.insert(filePath)
+                importedCount += 1
             }
-
-            let filePath = destination.path
-            guard !existingPaths.contains(filePath), !FileManager.default.fileExists(atPath: filePath) else {
-                skippedCount += 1
-                continue
+            try modelContext.save()
+        } catch {
+            for url in writtenURLs {
+                try? FileManager.default.removeItem(at: url)
             }
-
-            let fullContent = serializedContent(for: imported)
-            try FileManager.default.createDirectory(
-                at: destination.deletingLastPathComponent(),
-                withIntermediateDirectories: true
-            )
-            try fullContent.write(to: destination, atomically: true, encoding: .utf8)
-
-            let skill = Skill(
-                filePath: filePath,
-                toolSource: imported.toolSource,
-                isDirectory: imported.isDirectory,
-                name: imported.name,
-                skillDescription: imported.skillDescription,
-                content: imported.content,
-                frontmatter: imported.frontmatter,
-                fileModifiedDate: imported.fileModifiedDate,
-                fileSize: imported.fileSize,
-                isGlobal: imported.isGlobal,
-                resolvedPath: imported.resolvedPath,
-                kind: imported.kind
-            )
-            modelContext.insert(skill)
-            existingPaths.insert(filePath)
-            importedCount += 1
+            modelContext.rollback()
+            throw error
         }
-        try modelContext.save()
         return ImportResult(importedCount: importedCount, skippedCount: skippedCount, wasCancelled: false)
     }
 
