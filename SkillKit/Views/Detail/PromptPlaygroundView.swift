@@ -313,9 +313,9 @@ struct PromptPlaygroundView: View {
         } else if lower.contains("date") {
             return Date.now.formatted(date: .abbreviated, time: .shortened)
         } else if lower.contains("author") {
-            return "Developer"
+            return NSFullUserName()
         } else if lower.contains("version") {
-            return "1.0.0"
+            return Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
         } else {
             return ""
         }
