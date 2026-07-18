@@ -44,12 +44,67 @@ struct SkillKitApp: App {
         .modelContainer(sharedModelContainer)
         .commands {
             TextEditingCommands()
+            CommandGroup(after: .newItem) {
+                Button("New Skill") {
+                    appState.sidebarFilter = .allSkills
+                    appState.newItemKind = .skill
+                    appState.showingNewSkillSheet = true
+                }
+                .keyboardShortcut("n", modifiers: .command)
+
+                Button("New Rule") {
+                    appState.sidebarFilter = .allRules
+                    appState.newItemKind = .rule
+                    appState.showingNewSkillSheet = true
+                }
+                .keyboardShortcut("n", modifiers: [.command, .shift])
+            }
             CommandGroup(replacing: .saveItem) {
                 Button("Save") {
                     NotificationCenter.default.post(name: .saveCurrentSkill, object: nil)
                 }
                 .keyboardShortcut("s", modifiers: .command)
                 .disabled(appState.selectedSkill == nil)
+            }
+            CommandMenu("Library") {
+                Button("Dashboard") {
+                    appState.sidebarFilter = .dashboard
+                }
+                .keyboardShortcut("1", modifiers: .command)
+
+                Button("Skills") {
+                    appState.sidebarFilter = .allSkills
+                }
+                .keyboardShortcut("2", modifiers: .command)
+
+                Button("Rules") {
+                    appState.sidebarFilter = .allRules
+                }
+                .keyboardShortcut("3", modifiers: .command)
+
+                Button("Favorites") {
+                    appState.sidebarFilter = .favorites
+                }
+                .keyboardShortcut("4", modifiers: .command)
+
+                Divider()
+
+                Button("Rescan Local Skills") {
+                    NotificationCenter.default.post(name: .customScanPathsChanged, object: nil)
+                }
+                .keyboardShortcut("r", modifiers: [.command, .shift])
+
+                Button(appState.selectedSkill?.isFavorite == true ? "Remove from Favorites" : "Add to Favorites") {
+                    toggleFavorite()
+                }
+                .keyboardShortcut("f", modifiers: [.command, .shift])
+                .disabled(appState.selectedSkill == nil)
+
+                Button("Show Selected Item in Finder") {
+                    revealSelectedSkill()
+                }
+                .keyboardShortcut("o", modifiers: [.command, .shift])
+                .disabled(appState.selectedSkill == nil || appState.selectedSkill?.isRemote == true)
             }
             CommandGroup(after: .help) {
                 #if DEBUG
@@ -75,5 +130,20 @@ struct SkillKitApp: App {
                 .environment(appState)
                 .modelContainer(sharedModelContainer)
         }
+    }
+
+    private func toggleFavorite() {
+        guard let skill = appState.selectedSkill else { return }
+        skill.isFavorite.toggle()
+        do {
+            try sharedModelContainer.mainContext.save()
+        } catch {
+            AppLogger.ui.error("Could not update favorite status: \(error.localizedDescription)")
+        }
+    }
+
+    private func revealSelectedSkill() {
+        guard let skill = appState.selectedSkill, !skill.isRemote else { return }
+        NSWorkspace.shared.selectFile(skill.filePath, inFileViewerRootedAtPath: "")
     }
 }
