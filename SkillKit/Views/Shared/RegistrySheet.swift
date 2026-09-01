@@ -192,7 +192,7 @@ struct RegistrySheet: View {
                             }
                             .font(.caption)
                             .buttonStyle(.plain)
-                            .foregroundColor(.accentColor)
+                            .foregroundStyle(Color.accentColor)
                         }
                     }
 
@@ -204,24 +204,26 @@ struct RegistrySheet: View {
                         ScrollView {
                             VStack(spacing: 0) {
                                 ForEach(installedAgents) { agent in
-                                    HStack(spacing: 8) {
+                                    Button {
+                                        if selectedAgents.contains(agent.id) {
+                                            selectedAgents.remove(agent.id)
+                                        } else {
+                                            selectedAgents.insert(agent.id)
+                                        }
+                                    } label: {
+                                        HStack(spacing: 8) {
                                         Image(systemName: selectedAgents.contains(agent.id) ? "checkmark.circle.fill" : "circle")
-                                            .foregroundColor(selectedAgents.contains(agent.id) ? .accentColor : .secondary)
+                                            .foregroundStyle(selectedAgents.contains(agent.id) ? Color.accentColor : .secondary)
                                             .font(.system(size: 14))
 
                                         Text(agent.displayName)
                                             .font(.system(size: 12))
 
                                         Spacer()
-                                    }
-                                    .contentShape(Rectangle())
-                                    .onTapGesture {
-                                        if selectedAgents.contains(agent.id) {
-                                            selectedAgents.remove(agent.id)
-                                        } else {
-                                            selectedAgents.insert(agent.id)
                                         }
+                                        .contentShape(Rectangle())
                                     }
+                                    .buttonStyle(.plain)
                                     .padding(.vertical, 4)
                                     .padding(.horizontal, 4)
                                 }

@@ -20,6 +20,7 @@
 		2F2508D2C441CF9884D3DCFB /* ToolBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F6B422F226326AA7A65A2EF /* ToolBadge.swift */; };
 		310969575CEB09D84694B05D /* SkillHealth.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1DDFD2E96651C5B6FDB5DC3F /* SkillHealth.swift */; };
 		33BB308EB179D37BBE744F12 /* SkillLinter.swift in Sources */ = {isa = PBXBuildFile; fileRef = E24E3FCDD8C7C6E8C905C31B /* SkillLinter.swift */; };
+		342D2A32977CEEDA8C8809B0 /* ToolSourceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3E301B4DDCFCF5745D0508A /* ToolSourceTests.swift */; };
 		388E70746E46988E294AE1C0 /* SkillSecurity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38A7FFCA4783BA09688E77EE /* SkillSecurity.swift */; };
 		39AEA9BB8CCB30AAC6E20665 /* MarkdownRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D4299F1D53DEC13587A7F6B /* MarkdownRenderer.swift */; };
 		3C07D5B0FB92833AEAAFC60F /* SearchService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C78F0CB86F36931242AFA7A /* SearchService.swift */; };
@@ -48,11 +49,13 @@
 		6DF7753534850BB7312DDDA8 /* SchemaVersions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26EC1CA1A41F1F25D08BC825 /* SchemaVersions.swift */; };
 		6FACE272839E993072BDA243 /* ToolFilterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3B392D3D58E4A085BC7CA04 /* ToolFilterView.swift */; };
 		711BF33013D4EF6455A09495 /* DuplicateSkillSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5F03327FE2DB7BEA856A719 /* DuplicateSkillSheet.swift */; };
+		73D436E1179AD2E6E65DFEE3 /* SecurityScannerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAD13521F9ED1C566B743171 /* SecurityScannerTests.swift */; };
 		78DD7C487A74440E3B0566E8 /* DiffReviewPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D5FF8449949F4BB18AE52E6 /* DiffReviewPanel.swift */; };
 		7B07E9E1052B5CDA6BB5FE4C /* CollectionListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E7EB47E9257C409A075863C /* CollectionListView.swift */; };
 		7D33BE5744FFC24B32251523 /* AppLogger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E1FC406874A10D7A6B783B3 /* AppLogger.swift */; };
 		83770B13D846563A49B307F1 /* AgentConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2A241215388F068B986A2A6 /* AgentConfiguration.swift */; };
 		84C56C0847FDB71C582FECF7 /* SkillScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = E956464198AF0DD41588CBC3 /* SkillScanner.swift */; };
+		877F43F342F7C41A9BAD3773 /* FrontmatterParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F01B00971FB88A969E06064F /* FrontmatterParserTests.swift */; };
 		8A40E1B7B4A007BF24158B47 /* FileWatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE0F41281A07397874FA14E6 /* FileWatcher.swift */; };
 		91BD064EDD5126F2B1425F98 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18B3C368DD329454E176813 /* AppState.swift */; };
 		923EC7D2D1F66E1A2283D940 /* TemplateManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97FA90FAD05149F07541D967 /* TemplateManager.swift */; };
@@ -60,6 +63,7 @@
 		971609CC2E75435BC4033CCC /* Skill.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBC5658D7798B68500D7480B /* Skill.swift */; };
 		A2CCC1334A9CF5D3B5AE570E /* WizardTemplateType.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC2CD527D9B2C724ADB0BFC1 /* WizardTemplateType.swift */; };
 		A94BA47D642FD65DAD545AA5 /* SkillKitApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1FFDF8C2EC65DD90A34521A6 /* SkillKitApp.swift */; };
+		A9CBB6CA2177C1E9AAA56C22 /* SkillExporterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92C0C7EA179F385FE56E38AB /* SkillExporterTests.swift */; };
 		AB24EDA61596A067169F622E /* PromptPlaygroundView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29166902653CDFFB9129177A /* PromptPlaygroundView.swift */; };
 		ABFEFC70827B534716B0DF52 /* MDCParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91E3EA379A13779674933ECB /* MDCParser.swift */; };
 		ADC1D32CAEC55D5F5128CD8D /* RecentSkillSearch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07B9C31D7B2C7F55DCCED85A /* RecentSkillSearch.swift */; };
@@ -78,6 +82,7 @@
 		D0C9EC5F17E145F4D9516462 /* PlatformOption.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30C1322E1DB495417F902FE0 /* PlatformOption.swift */; };
 		D37891CD0CEB1DD09BCDEAEC /* SkillEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FDB073522B8832BC8ABA891 /* SkillEditorView.swift */; };
 		D492D7845B1C8278767CCE29 /* Highlightr in Frameworks */ = {isa = PBXBuildFile; productRef = AEC454520A1230652F702C27 /* Highlightr */; };
+		DE6680EF38FF2A80796D9863 /* SkillLinterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF00A5843AF856CC57BD75BE /* SkillLinterTests.swift */; };
 		E1F3D43D4A08E879076415C2 /* CustomPlatformSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 605C75D61678CC12646B7E6A /* CustomPlatformSheet.swift */; };
 		E63B57E326C3C15FC2218552 /* ComposePanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4E0510DE784A309C0F475D2 /* ComposePanel.swift */; };
 		E9C2F606FF6D2E93DE878076 /* RemoteServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 830DD2F45CADE53761E07DA6 /* RemoteServer.swift */; };
@@ -89,11 +94,22 @@
 		FCF4EB9052FD9188E8C37650 /* AppPaths.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D9E1D929F60EF823E3155BF /* AppPaths.swift */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		310B3D38F3C3CAF12F9F3463 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 718CCFD0E8DFD11C3E31F9E1 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 69DE43260D5A9B5ECCE4E4BD;
+			remoteInfo = SkillKit;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
 		000172ACC495C7D3FEA9FA32 /* StoreBootstrap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreBootstrap.swift; sourceTree = "<group>"; };
 		016DB8E6814CD5D9B724D168 /* NewSkillSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewSkillSheet.swift; sourceTree = "<group>"; };
 		07B9C31D7B2C7F55DCCED85A /* RecentSkillSearch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecentSkillSearch.swift; sourceTree = "<group>"; };
 		09BF56AA40A6D62D18A16562 /* SecurityScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecurityScanner.swift; sourceTree = "<group>"; };
+		0A20FBBAD346235049A88280 /* SkillKitTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SkillKitTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		0AF69A33F94E30B6E14A4CD3 /* SkillRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkillRegistry.swift; sourceTree = "<group>"; };
 		166071A496D4B741CDD0E7E4 /* ComposeModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposeModel.swift; sourceTree = "<group>"; };
 		172F98F067A35DE28CAEC5E7 /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
@@ -139,6 +155,7 @@
 		830DD2F45CADE53761E07DA6 /* RemoteServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteServer.swift; sourceTree = "<group>"; };
 		8C2097341A6CE02E3FB054EA /* AgentTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentTypes.swift; sourceTree = "<group>"; };
 		91E3EA379A13779674933ECB /* MDCParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MDCParser.swift; sourceTree = "<group>"; };
+		92C0C7EA179F385FE56E38AB /* SkillExporterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkillExporterTests.swift; sourceTree = "<group>"; };
 		97FA90FAD05149F07541D967 /* TemplateManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TemplateManager.swift; sourceTree = "<group>"; };
 		995E5B8D1808F440B66D0316 /* ToolSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolSource.swift; sourceTree = "<group>"; };
 		9BB04701DA4FBAFAD4BB2ECC /* ActivityRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityRow.swift; sourceTree = "<group>"; };
@@ -154,6 +171,7 @@
 		BA9BFBF4CF9A2AEB8D8228E3 /* SSHService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSHService.swift; sourceTree = "<group>"; };
 		C23E68CF20BB4455FD1F8FE9 /* SkillParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkillParser.swift; sourceTree = "<group>"; };
 		C8B5683ABCAF02AF1788F3B5 /* ThinkingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThinkingView.swift; sourceTree = "<group>"; };
+		CAD13521F9ED1C566B743171 /* SecurityScannerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecurityScannerTests.swift; sourceTree = "<group>"; };
 		CE0F41281A07397874FA14E6 /* FileWatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileWatcher.swift; sourceTree = "<group>"; };
 		D000D3A13A7555681B3EB055 /* RegistrySheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RegistrySheet.swift; sourceTree = "<group>"; };
 		D3B392D3D58E4A085BC7CA04 /* ToolFilterView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolFilterView.swift; sourceTree = "<group>"; };
@@ -161,9 +179,12 @@
 		D856424F08899585C4398352 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		DBC5658D7798B68500D7480B /* Skill.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Skill.swift; sourceTree = "<group>"; };
 		E24E3FCDD8C7C6E8C905C31B /* SkillLinter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkillLinter.swift; sourceTree = "<group>"; };
+		E3E301B4DDCFCF5745D0508A /* ToolSourceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolSourceTests.swift; sourceTree = "<group>"; };
 		E956464198AF0DD41588CBC3 /* SkillScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkillScanner.swift; sourceTree = "<group>"; };
 		EC2CD527D9B2C724ADB0BFC1 /* WizardTemplateType.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WizardTemplateType.swift; sourceTree = "<group>"; };
+		EF00A5843AF856CC57BD75BE /* SkillLinterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkillLinterTests.swift; sourceTree = "<group>"; };
 		EFE038D2C1D974750C199068 /* MarkdownSyntaxHighlighter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownSyntaxHighlighter.swift; sourceTree = "<group>"; };
+		F01B00971FB88A969E06064F /* FrontmatterParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrontmatterParserTests.swift; sourceTree = "<group>"; };
 		F18E23E0783AB226C213C5BC /* ServersSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServersSettingsView.swift; sourceTree = "<group>"; };
 		F19302BB14481C959770A85A /* SkillKitSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkillKitSettings.swift; sourceTree = "<group>"; };
 		F6A3B4830AF150A60E05C1E2 /* SkillValidation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkillValidation.swift; sourceTree = "<group>"; };
@@ -240,6 +261,18 @@
 			path = Sidebar;
 			sourceTree = "<group>";
 		};
+		305F5E8EDD094E4B266AA884 /* SkillKitTests */ = {
+			isa = PBXGroup;
+			children = (
+				F01B00971FB88A969E06064F /* FrontmatterParserTests.swift */,
+				CAD13521F9ED1C566B743171 /* SecurityScannerTests.swift */,
+				92C0C7EA179F385FE56E38AB /* SkillExporterTests.swift */,
+				EF00A5843AF856CC57BD75BE /* SkillLinterTests.swift */,
+				E3E301B4DDCFCF5745D0508A /* ToolSourceTests.swift */,
+			);
+			path = SkillKitTests;
+			sourceTree = "<group>";
+		};
 		52515D91EFAE035267650BF4 /* Utilities */ = {
 			isa = PBXGroup;
 			children = (
@@ -280,6 +313,7 @@
 			isa = PBXGroup;
 			children = (
 				44069AE7BD3B004F268DC134 /* SkillKit.app */,
+				0A20FBBAD346235049A88280 /* SkillKitTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -357,6 +391,7 @@
 			isa = PBXGroup;
 			children = (
 				B462923DAB35CA1F05363AB6 /* SkillKit */,
+				305F5E8EDD094E4B266AA884 /* SkillKitTests */,
 				5F498B1AECCC15D46E73038B /* Products */,
 			);
 			sourceTree = "<group>";
@@ -421,6 +456,24 @@
 			productReference = 44069AE7BD3B004F268DC134 /* SkillKit.app */;
 			productType = "com.apple.product-type.application";
 		};
+		E876E12E59D6610E5A52E497 /* SkillKitTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = DDAA711D4C54BFF5F0A6F9B0 /* Build configuration list for PBXNativeTarget "SkillKitTests" */;
+			buildPhases = (
+				5987ACC4CF25E1CED4779956 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				7A1F0E93E34217A95A7AB475 /* PBXTargetDependency */,
+			);
+			name = SkillKitTests;
+			packageProductDependencies = (
+			);
+			productName = SkillKitTests;
+			productReference = 0A20FBBAD346235049A88280 /* SkillKitTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -430,6 +483,9 @@
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
+					69DE43260D5A9B5ECCE4E4BD = {
+						DevelopmentTeam = 85WWK9DRYX;
+					};
 				};
 			};
 			buildConfigurationList = 34884DD1BD2A3A82A5102603 /* Build configuration list for PBXProject "SkillKit" */;
@@ -451,6 +507,7 @@
 			projectRoot = "";
 			targets = (
 				69DE43260D5A9B5ECCE4E4BD /* SkillKit */,
+				E876E12E59D6610E5A52E497 /* SkillKitTests */,
 			);
 		};
 /* End PBXProject section */
@@ -468,6 +525,18 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		5987ACC4CF25E1CED4779956 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				877F43F342F7C41A9BAD3773 /* FrontmatterParserTests.swift in Sources */,
+				73D436E1179AD2E6E65DFEE3 /* SecurityScannerTests.swift in Sources */,
+				A9CBB6CA2177C1E9AAA56C22 /* SkillExporterTests.swift in Sources */,
+				DE6680EF38FF2A80796D9863 /* SkillLinterTests.swift in Sources */,
+				342D2A32977CEEDA8C8809B0 /* ToolSourceTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		953FE56D469AF33FFD87B393 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -553,16 +622,44 @@
 		};
 /* End PBXSourcesBuildPhase section */
 
+/* Begin PBXTargetDependency section */
+		7A1F0E93E34217A95A7AB475 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 69DE43260D5A9B5ECCE4E4BD /* SkillKit */;
+			targetProxy = 310B3D38F3C3CAF12F9F3463 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
 /* Begin XCBuildConfiguration section */
+		190A8598224717D30BFEE8F9 /* LocalRelease */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				PRODUCT_BUNDLE_IDENTIFIER = alice.turcanu.com.SkillKitTests;
+				SDKROOT = macosx;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/SkillKit.app/Contents/MacOS/SkillKit";
+			};
+			name = LocalRelease;
+		};
 		44F36E72220AD5B52B63FEF9 /* AppStore */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = SkillKitIcon;
+				ASSETCATALOG_COMPILER_GENERATE_ASSET_SYMBOLS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = NO;
 				CODE_SIGN_ENTITLEMENTS = SkillKit/SkillKit.entitlements;
-				CODE_SIGN_IDENTITY = "Apple Distribution";
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 85WWK9DRYX;
 				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_PREVIEW_BUILD = NO;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = SkillKit/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -577,14 +674,35 @@
 			};
 			name = AppStore;
 		};
+		6C2D0951290ED53AC1E99489 /* AppStore */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				PRODUCT_BUNDLE_IDENTIFIER = alice.turcanu.com.SkillKitTests;
+				SDKROOT = macosx;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/SkillKit.app/Contents/MacOS/SkillKit";
+			};
+			name = AppStore;
+		};
 		6D732AC65476EFCBCF4436C9 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = SkillKitIcon;
+				ASSETCATALOG_COMPILER_GENERATE_ASSET_SYMBOLS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = NO;
 				CODE_SIGN_ENTITLEMENTS = SkillKit/SkillKit.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 85WWK9DRYX;
 				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_PREVIEW_BUILD = NO;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = SkillKit/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -774,15 +892,36 @@
 			};
 			name = AppStore;
 		};
+		E32DF450CE02B2F0E7F572E5 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				PRODUCT_BUNDLE_IDENTIFIER = alice.turcanu.com.SkillKitTests;
+				SDKROOT = macosx;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/SkillKit.app/Contents/MacOS/SkillKit";
+			};
+			name = Release;
+		};
 		E4493C9BA2D2797C993A2DB1 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = SkillKitIcon;
+				ASSETCATALOG_COMPILER_GENERATE_ASSET_SYMBOLS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = NO;
 				CODE_SIGN_ENTITLEMENTS = SkillKit/SkillKit.entitlements;
 				CODE_SIGN_IDENTITY = "Developer ID Application";
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 85WWK9DRYX;
 				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_PREVIEW_BUILD = NO;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = SkillKit/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -857,10 +996,14 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = SkillKitIcon;
+				ASSETCATALOG_COMPILER_GENERATE_ASSET_SYMBOLS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = NO;
 				CODE_SIGN_ENTITLEMENTS = SkillKit/SkillKitLocalRelease.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 85WWK9DRYX;
 				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_PREVIEW_BUILD = NO;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = SkillKit/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -874,6 +1017,23 @@
 				SWIFT_STRICT_CONCURRENCY = minimal;
 			};
 			name = LocalRelease;
+		};
+		FF7DCC1214505E83D7CCC246 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				PRODUCT_BUNDLE_IDENTIFIER = alice.turcanu.com.SkillKitTests;
+				SDKROOT = macosx;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/SkillKit.app/Contents/MacOS/SkillKit";
+			};
+			name = Debug;
 		};
 /* End XCBuildConfiguration section */
 
@@ -896,6 +1056,17 @@
 				A5335F9521AFDEDEC2A6B575 /* Debug */,
 				ED954EAC4933BBDAF932B40C /* LocalRelease */,
 				7FE8544B5FADAEEDD2214287 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		DDAA711D4C54BFF5F0A6F9B0 /* Build configuration list for PBXNativeTarget "SkillKitTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				6C2D0951290ED53AC1E99489 /* AppStore */,
+				FF7DCC1214505E83D7CCC246 /* Debug */,
+				190A8598224717D30BFEE8F9 /* LocalRelease */,
+				E32DF450CE02B2F0E7F572E5 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;

@@ -211,7 +211,10 @@ extension Skill {
             .deletingLastPathComponent()
         let skillDirName = currentSkillDir.lastPathComponent
 
-        let agentsSkillsDir = "\(AppPaths.agentsDirectory)/skills"
+        let sotDir = SkillKitSettings.sotDir
+        let agentsSkillsDir = sotDir.hasSuffix(".agents")
+            ? "\(sotDir)/skills"
+            : "\(sotDir)/agents/skills"
         let canonicalDir = "\(agentsSkillsDir)/\(skillDirName)"
         let canonicalFile = "\(canonicalDir)/SKILL.md"
 

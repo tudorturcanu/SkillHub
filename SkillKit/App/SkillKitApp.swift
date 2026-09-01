@@ -10,7 +10,6 @@ struct SkillKitApp: App {
 
     init() {
         UserDefaults.standard.register(defaults: [
-            "sotDir": AppPaths.agentsDirectory,
             "securityScanningEnabled": true
         ])
     }
@@ -118,7 +117,7 @@ struct SkillKitApp: App {
             }
         }
 
-        MenuBarExtra("SkillKit", systemImage: "wrench.and.jaw") {
+        MenuBarExtra("SkillKit", systemImage: "wrench.and.screwdriver") {
             MenuBarView()
                 .environment(appState)
                 .modelContainer(sharedModelContainer)

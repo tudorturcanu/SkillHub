@@ -123,9 +123,13 @@ struct SidebarView: View {
                             Spacer()
 
                             if let error = serverErrors[server.id] {
-                                Image(systemName: "exclamationmark.triangle.fill")
-                                    .font(.caption)
-                                    .foregroundStyle(.red)
+                                Button("Show sync error", systemImage: "exclamationmark.triangle.fill") {
+                                    showingErrorForServer = server.id
+                                }
+                                .labelStyle(.iconOnly)
+                                .buttonStyle(.plain)
+                                .font(.caption)
+                                .foregroundStyle(.red)
                                     .popover(isPresented: Binding(
                                         get: { showingErrorForServer == server.id },
                                         set: { if !$0 { showingErrorForServer = nil } }
@@ -134,9 +138,6 @@ struct SidebarView: View {
                                             .font(.caption)
                                             .padding()
                                             .frame(maxWidth: 250)
-                                    }
-                                    .onTapGesture {
-                                        showingErrorForServer = server.id
                                     }
                             }
 
@@ -163,6 +164,7 @@ struct SidebarView: View {
             }
         }
         .listStyle(.sidebar)
+        .navigationSplitViewColumnWidth(min: 180, ideal: 210, max: 280)
         .navigationTitle("SkillKit")
         .onChange(of: securityScanningEnabled) {
             if !securityScanningEnabled, appState.sidebarFilter == .securityReview {

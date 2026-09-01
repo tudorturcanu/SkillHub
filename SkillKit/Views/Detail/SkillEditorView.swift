@@ -2,6 +2,7 @@ import SwiftUI
 import AppKit
 import os
 
+@MainActor
 @Observable
 final class SkillEditorDocument {
     var editorContent: String = "" {
@@ -200,10 +201,6 @@ final class SkillEditorDocument {
                 }
             }
         }
-    }
-
-    deinit {
-        loadTask?.cancel()
     }
 }
 

@@ -2,9 +2,10 @@ import SwiftUI
 
 struct OnboardingView: View {
     @Binding var didCompleteOnboarding: Bool
-    @State private var selectedPlatformIDs = Set(PlatformOption.onboarding.map(\.id))
+    @State private var selectedPlatformIDs: Set<String> = []
     @State private var step: OnboardingStep = .platforms
     @State private var grantedPaths: Set<String> = []
+    @State private var accessError: String?
 
     private enum OnboardingStep {
         case platforms
@@ -41,7 +42,7 @@ struct OnboardingView: View {
                     .font(.system(size: 32, weight: .bold))
                     .foregroundStyle(.primary)
 
-                Text("You can use SkillKit with Codex, Claude, GitHub Copilot, or multiple platforms. You can change this later in Settings.")
+                Text("Select the platforms you use. SkillKit only reads folders you explicitly choose, and you can change this later in Settings.")
                     .font(.system(size: 15))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -79,7 +80,7 @@ struct OnboardingView: View {
                         .font(.system(size: 32, weight: .bold))
                         .foregroundStyle(.primary)
 
-                    Text("Grant SkillKit access to each selected platform folder so it can scan, install, and sync your skills.")
+                    Text("Choose only the folders you want SkillKit to manage. Folder access can be changed later in Settings.")
                         .font(.system(size: 15))
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -91,6 +92,13 @@ struct OnboardingView: View {
 
                 permissionWarningBanner
                     .frame(maxWidth: 820)
+
+                if let accessError {
+                    Label(accessError, systemImage: "exclamationmark.triangle.fill")
+                        .font(.callout)
+                        .foregroundStyle(.red)
+                        .frame(maxWidth: 820, alignment: .leading)
+                }
             }
             .padding(.top, 48)
             .padding(.horizontal, 48)
@@ -108,8 +116,6 @@ struct OnboardingView: View {
                 title: "\(option.displayName) User Skills",
                 path: option.expandedSkillsPath,
                 expectedPath: option.shortSkillsPath,
-                buttonTitle: "Choose \(option.displayName) User Folder",
-                isRequired: false,
                 isXcode: false
             ))
             if let xcodePath = option.expandedXcodePath {
@@ -119,8 +125,6 @@ struct OnboardingView: View {
                     title: "\(option.displayName) Xcode Environment",
                     path: xcodePath,
                     expectedPath: "Choose the Xcode \(option.displayName) environment folder or its `skills` subfolder.",
-                    buttonTitle: "Choose \(option.displayName) Xcode Folder",
-                    isRequired: true,
                     isXcode: true
                 ))
             }
@@ -282,42 +286,41 @@ struct OnboardingView: View {
             guard response == .OK, let url = panel.url else { return }
             DispatchQueue.main.async {
                 let grantedPath = url.path
-                SandboxBookmarkManager.saveBookmark(for: url, customKey: grantedPath)
-                grantedPaths.insert(grantedPath)
-
-                if grantedPath != path {
-                    SandboxBookmarkManager.saveBookmark(for: url, customKey: path)
-                    grantedPaths.insert(path)
+                guard path == grantedPath || path.hasPrefix(grantedPath + "/") else {
+                    accessError = "Choose the listed folder or one of its parent folders so SkillKit receives valid access."
+                    return
                 }
 
-                syncGrantedFolder(grantedPath, canonicalPath: path)
+                SandboxBookmarkManager.saveBookmark(for: url, customKey: path)
+                grantedPaths.insert(path)
+                accessError = nil
+                syncGrantedFolder(canonicalPath: path)
             }
         }
     }
 
-    private func syncGrantedFolder(_ grantedPath: String, canonicalPath: String) {
+    private func syncGrantedFolder(canonicalPath: String) {
         var scanPaths = UserDefaults.standard.stringArray(forKey: "customScanPaths") ?? []
-        for path in [canonicalPath, grantedPath] where !scanPaths.contains(path) {
-            scanPaths.append(path)
+        if !scanPaths.contains(canonicalPath) {
+            scanPaths.append(canonicalPath)
         }
         scanPaths.sort()
         UserDefaults.standard.set(scanPaths, forKey: "customScanPaths")
         UserDefaults.standard.set(false, forKey: "dismissed_\(canonicalPath)")
-        UserDefaults.standard.set(false, forKey: "dismissed_\(grantedPath)")
         NotificationCenter.default.post(name: .customScanPathsChanged, object: nil)
 
     }
 
     private func completeOnboarding() {
-        let selectedPaths = selectedPlatforms.map(\.expandedSkillsPath)
-        let xcodePaths = selectedPlatforms.compactMap(\.expandedXcodePath)
-        let existingPaths = UserDefaults.standard.stringArray(forKey: "customScanPaths") ?? []
-        let scanPaths = Array(Set(existingPaths + selectedPaths + xcodePaths)).sorted()
-
-        let fileManager = FileManager.default
-        for path in scanPaths {
-            try? fileManager.createDirectory(atPath: path, withIntermediateDirectories: true)
+        let onboardingPaths = PlatformOption.onboarding.flatMap { option in
+            [option.expandedSkillsPath, option.expandedXcodePath].compactMap(\.self)
         }
+        let grantedSelectedPaths = folderItems
+            .map(\.path)
+            .filter(isGranted)
+        let existingPaths = UserDefaults.standard.stringArray(forKey: "customScanPaths") ?? []
+        let nonOnboardingPaths = existingPaths.filter { !onboardingPaths.contains($0) }
+        let scanPaths = Array(Set(nonOnboardingPaths + grantedSelectedPaths)).sorted()
 
         UserDefaults.standard.set(scanPaths, forKey: "customScanPaths")
         for option in PlatformOption.onboarding {
@@ -387,6 +390,7 @@ private struct PlatformCard: View {
             }
         }
         .buttonStyle(.plain)
+        .accessibilityValue(isSelected ? "Selected" : "Not selected")
     }
 }
 
@@ -398,8 +402,6 @@ private struct FolderPermissionItem: Identifiable {
     let title: String
     let path: String
     let expectedPath: String
-    let buttonTitle: String
-    let isRequired: Bool
     let isXcode: Bool
 }
 

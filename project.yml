@@ -37,6 +37,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: alice.turcanu.com.SkillKit
+        DEVELOPMENT_TEAM: 85WWK9DRYX
         MARKETING_VERSION: "1.0.0"
         CURRENT_PROJECT_VERSION: 1
         INFOPLIST_FILE: SkillKit/Info.plist
@@ -45,11 +46,25 @@ targets:
         GENERATE_INFOPLIST_FILE: NO
         SWIFT_STRICT_CONCURRENCY: minimal
         ASSETCATALOG_COMPILER_APPICON_NAME: SkillKitIcon
+        ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS: NO
+        ASSETCATALOG_COMPILER_GENERATE_ASSET_SYMBOLS: NO
+        ENABLE_PREVIEW_BUILD: NO
         ENABLE_HARDENED_RUNTIME: YES
+
       configs:
         Release:
           CODE_SIGN_IDENTITY: "Developer ID Application"
-        AppStore:
-          CODE_SIGN_IDENTITY: "Apple Distribution"
         LocalRelease:
           CODE_SIGN_ENTITLEMENTS: SkillKit/SkillKitLocalRelease.entitlements
+
+  SkillKitTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: SkillKitTests
+    dependencies:
+      - target: SkillKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: alice.turcanu.com.SkillKitTests
+        MACOSX_DEPLOYMENT_TARGET: "15.0"

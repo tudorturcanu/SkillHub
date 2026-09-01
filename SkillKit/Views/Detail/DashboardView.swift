@@ -263,7 +263,7 @@ struct DashboardView: View {
                         .annotation(position: .trailing) {
                             Text("\(item.count)")
                                 .font(.caption2)
-                                .foregroundColor(.secondary)
+                                .foregroundStyle(.secondary)
                         }
                     }
                 }
@@ -334,7 +334,11 @@ struct DashboardView: View {
                 VStack(spacing: 0) {
                     let rows = Array(risky.prefix(4))
                     ForEach(rows, id: \.skill.id) { entry in
-                        HStack {
+                        Button {
+                            appState.skillSortOption = .securityRisk
+                            openSkill(entry.skill, in: .securityReview)
+                        } label: {
+                            HStack {
                             Image(systemName: entry.result.topSeverity?.icon ?? "shield.fill")
                                 .foregroundStyle(entry.result.topSeverity?.color ?? .secondary)
                                 .font(.system(size: 14))
@@ -368,14 +372,12 @@ struct DashboardView: View {
                             .padding(.horizontal, 10)
                             .background((entry.result.topSeverity?.color ?? .secondary).opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
                             .help(entry.result.scoreBreakdownText)
+                            }
+                            .contentShape(Rectangle())
                         }
+                        .buttonStyle(.plain)
                         .padding(.vertical, 10)
                         .padding(.horizontal, 12)
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            appState.skillSortOption = .securityRisk
-                            openSkill(entry.skill, in: .securityReview)
-                        }
 
                         if entry.skill.id != rows.last?.skill.id {
                             Divider().padding(.leading, 32)

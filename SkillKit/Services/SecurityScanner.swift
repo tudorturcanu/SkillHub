@@ -259,6 +259,17 @@ enum SecurityScanner {
               #"(os\.environ|process\.env|getenv)\b[^\n]{0,40}(KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL)"#),
         .init("CRED", .credentialAccess, .medium, "Hardcoded secret",
               #"(api[_-]?key|secret|password|token)\s*[:=]\s*['"][A-Za-z0-9_\-]{16,}['"]"#),
+        .init("KEY_OPENAI", .credentialAccess, .critical, "Exposed OpenAI API Key",
+              #"sk-proj-[A-Za-z0-9_\-]{20,}|sk-[A-Za-z0-9]{48}"#),
+        .init("KEY_ANTHROPIC", .credentialAccess, .critical, "Exposed Anthropic API Key",
+              #"sk-ant-api03-[A-Za-z0-9_\-]{20,}|sk-ant-[A-Za-z0-9_\-]{20,}"#),
+        .init("KEY_GITHUB", .credentialAccess, .critical, "Exposed GitHub Personal Access Token",
+              #"ghp_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9]{22}_[A-Za-z0-9]{59}"#),
+        .init("KEY_AWS", .credentialAccess, .critical, "Exposed AWS Access Key ID",
+              #"AKIA[0-9A-Z]{16}"#),
+        .init("KEY_SSH_PRIV", .credentialAccess, .critical, "Hardcoded Private Key Block",
+              #"-----BEGIN (RSA|OPENSSH|EC|DSA|PRIVATE) KEY-----"#),
+
 
         // --- Data Exfiltration ---
         .init("E1", .dataExfiltration, .medium, "POST to external endpoint",

@@ -16,7 +16,7 @@ struct SkillMetadataBar: View {
     @State private var deepScanResult: SecurityScanResult?
 
     var body: some View {
-        HStack(spacing: 16) {
+        HStack(spacing: 8) {
             HStack(spacing: 6) {
                 ForEach(skill.toolSources) { tool in
                     ToolIcon(tool: tool, size: 14)
@@ -50,12 +50,16 @@ struct SkillMetadataBar: View {
             Text(formattedSize)
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
 
             Divider().frame(height: 16)
 
             Text("\(characterCount) chars / \(wordCount) words / ~\(tokenCount) tokens")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
 
             Divider().frame(height: 16)
 
@@ -98,6 +102,8 @@ struct SkillMetadataBar: View {
             Text(skill.fileModifiedDate.formatted(.relative(presentation: .named)))
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)

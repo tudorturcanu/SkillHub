@@ -261,7 +261,7 @@ struct SkillDetailView: View {
             case .confirmMakeGlobal:
                 return Alert(
                     title: Text("Make \"\(skill.name)\" Global?"),
-                    message: Text("This will move the skill to ~/.agents/skills/ and symlink it to all installed agents."),
+                    message: Text("This will move the skill to your global SkillKit library and symlink it to supported agent folders."),
                     primaryButton: .default(Text("Make Global")) {
                         makeSkillGlobal()
                     },

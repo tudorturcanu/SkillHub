@@ -30,6 +30,10 @@ struct NewSkillSheet: View {
 
     private var itemKind: ItemKind { appState.newItemKind }
 
+    private var trimmedName: String {
+        skillName.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     private var creatableTools: [ToolSource] {
         switch itemKind {
         case .skill:
@@ -48,6 +52,9 @@ struct NewSkillSheet: View {
             Form {
                 TextField("\(itemKind.singularName) name", text: $skillName)
                     .textFieldStyle(.roundedBorder)
+                    .onChange(of: skillName) {
+                        errorMessage = nil
+                    }
 
                 Picker("Tool", selection: $selectedTool) {
                     ForEach(creatableTools) { tool in
@@ -73,9 +80,10 @@ struct NewSkillSheet: View {
             .formStyle(.grouped)
 
             if let error = errorMessage {
-                Text(error)
+                Label(error, systemImage: "exclamationmark.triangle.fill")
                     .font(.caption)
                     .foregroundStyle(.red)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
 
             HStack {
@@ -90,7 +98,7 @@ struct NewSkillSheet: View {
                     createItem()
                 }
                 .keyboardShortcut(.defaultAction)
-                .disabled(skillName.isEmpty)
+                .disabled(trimmedName.isEmpty)
             }
         }
         .padding(24)
@@ -105,7 +113,7 @@ struct NewSkillSheet: View {
 
     private func createItem() {
         let fm = FileManager.default
-        let sanitizedName = skillName
+        let sanitizedName = trimmedName
             .lowercased()
             .replacingOccurrences(of: " ", with: "-")
             .filter { $0.isLetter || $0.isNumber || $0 == "-" }
@@ -152,7 +160,7 @@ struct NewSkillSheet: View {
                     return
                 }
 
-                let boilerplate = generateBoilerplate(name: skillName, skillID: sanitizedName, tool: selectedTool)
+                let boilerplate = generateBoilerplate(name: trimmedName, skillID: sanitizedName, tool: selectedTool)
                 try boilerplate.write(toFile: filePath, atomically: true, encoding: .utf8)
 
                 // When creating a Global skill, symlink from each installed agent's skills dir
@@ -174,7 +182,7 @@ struct NewSkillSheet: View {
                     filePath: filePath,
                     toolSource: selectedTool,
                     isDirectory: itemKind != .rule,
-                    name: skillName,
+                    name: trimmedName,
                     skillDescription: parsed.description,
                     content: parsed.content,
                     frontmatter: parsed.frontmatter,

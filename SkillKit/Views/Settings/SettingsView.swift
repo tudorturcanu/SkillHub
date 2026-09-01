@@ -19,14 +19,14 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .platforms: "Platforms"
-        case .scanDirs: "Scan Directories"
+        case .scanDirs: "Folders"
         case .servers: "Servers"
         case .security: "Security"
         #if DEBUG
         case .release: "Release"
         #endif
         case .appearance: "Appearance"
-        case .data: "Data Management"
+        case .data: "Data"
         case .about: "About"
         }
     }
@@ -84,7 +84,7 @@ struct SettingsView: View {
             tabContent
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .frame(width: 520)
+        .frame(width: 680)
         .fixedSize(horizontal: false, vertical: true)
         .onAppear {
             loadCustomPaths()
@@ -109,6 +109,10 @@ struct SettingsView: View {
                     list[index] = platform
                 } else {
                     list.append(platform)
+                    for path in [platform.expandedSkillsPath, platform.expandedXcodePath].compactMap(\.self)
+                    where !customPaths.contains(path) {
+                        customPaths.append(path)
+                    }
                 }
                 PlatformOption.customPlatforms = list
                 saveCustomPaths()
@@ -228,60 +232,66 @@ struct SettingsView: View {
                 .foregroundStyle(.secondary)
 
             if !customPaths.isEmpty {
-                VStack(spacing: 0) {
-                    ForEach(customPaths, id: \.self) { path in
-                        HStack {
-                            Image(systemName: "folder")
-                            Text(path)
-                                .font(.system(.body, design: .monospaced))
-                                .lineLimit(1)
-                                .truncationMode(.middle)
-                            
-                            let _ = bookmarkRefreshTrigger
-                            let hasBookmark = UserDefaults.standard.data(forKey: "bookmark_\(path)") != nil
-                            if !hasBookmark {
-                                HStack(spacing: 4) {
-                                    Image(systemName: "exclamationmark.triangle.fill")
-                                        .foregroundStyle(.yellow)
-                                    Button {
-                                        authorizeDirectory(path: path)
-                                    } label: {
-                                        Text("Authorize")
-                                            .foregroundStyle(.blue)
-                                            .underline()
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(customPaths, id: \.self) { path in
+                            HStack {
+                                Image(systemName: "folder")
+                                Text(path)
+                                    .font(.system(.body, design: .monospaced))
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+
+                                let _ = bookmarkRefreshTrigger
+                                let hasBookmark = UserDefaults.standard.data(forKey: "bookmark_\(path)") != nil
+                                if !hasBookmark {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "exclamationmark.triangle.fill")
+                                            .foregroundStyle(.yellow)
+                                        Button {
+                                            authorizeDirectory(path: path)
+                                        } label: {
+                                            Text("Authorize")
+                                                .foregroundStyle(.blue)
+                                                .underline()
+                                        }
+                                        .buttonStyle(.plain)
                                     }
-                                    .buttonStyle(.plain)
+                                    .padding(.leading, 8)
                                 }
-                                .padding(.leading, 8)
-                            }
-                            
-                            Spacer()
-                            Button {
-                                revealPath(path)
-                            } label: {
-                                Image(systemName: "arrow.up.forward.square")
-                            }
-                            .buttonStyle(.plain)
-                            .help("Reveal in Finder")
 
-                            Button {
-                                UserDefaults.standard.set(true, forKey: "dismissed_\(path)")
-                                customPaths.removeAll { $0 == path }
-                                saveCustomPaths()
-                            } label: {
-                                Image(systemName: "minus.circle.fill")
-                                    .foregroundStyle(.red)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                        .padding(.vertical, 6)
-                        .padding(.horizontal, 8)
+                                Spacer()
+                                Button {
+                                    revealPath(path)
+                                } label: {
+                                    Image(systemName: "arrow.up.forward.square")
+                                }
+                                .buttonStyle(.plain)
+                                .help("Reveal in Finder")
+                                .accessibilityLabel("Reveal \(path) in Finder")
 
-                        if path != customPaths.last {
-                            Divider()
+                                Button {
+                                    UserDefaults.standard.set(true, forKey: "dismissed_\(path)")
+                                    customPaths.removeAll { $0 == path }
+                                    saveCustomPaths()
+                                } label: {
+                                    Image(systemName: "minus.circle.fill")
+                                        .foregroundStyle(.red)
+                                }
+                                .buttonStyle(.plain)
+                                .help("Remove directory")
+                                .accessibilityLabel("Remove \(path)")
+                            }
+                            .padding(.vertical, 6)
+                            .padding(.horizontal, 8)
+
+                            if path != customPaths.last {
+                                Divider()
+                            }
                         }
                     }
                 }
+                .frame(maxHeight: 360)
                 .background(Color(NSColor.controlBackgroundColor))
                 .clipShape(RoundedRectangle(cornerRadius: 6))
             } else {
@@ -471,24 +481,7 @@ struct SettingsView: View {
     }
 
     private func loadCustomPaths() {
-        let saved = UserDefaults.standard.stringArray(forKey: "customScanPaths") ?? []
-        var currentPaths = saved
-        
-        // Automatically suggest the onboarding platform directories.
-        let defaultPaths = PlatformOption.onboarding.map(\.expandedSkillsPath)
-        var addedNew = false
-        
-        for path in defaultPaths {
-            if !currentPaths.contains(path) && !UserDefaults.standard.bool(forKey: "dismissed_\(path)") {
-                currentPaths.append(path)
-                addedNew = true
-            }
-        }
-        
-        customPaths = currentPaths
-        if addedNew {
-            saveCustomPaths()
-        }
+        customPaths = UserDefaults.standard.stringArray(forKey: "customScanPaths") ?? []
     }
 
     private func saveCustomPaths() {
@@ -511,7 +504,6 @@ struct SettingsView: View {
             for path in paths where !customPaths.contains(path) {
                 customPaths.append(path)
                 UserDefaults.standard.set(false, forKey: "dismissed_\(path)")
-                try? FileManager.default.createDirectory(atPath: path, withIntermediateDirectories: true)
             }
         } else {
             for path in paths {
@@ -573,6 +565,7 @@ private struct SettingsTabButton: View {
         }
         .buttonStyle(.plain)
         .foregroundStyle(isSelected ? .primary : .secondary)
+        .accessibilityValue(isSelected ? "Selected" : "Not selected")
     }
 }
 
@@ -627,6 +620,7 @@ private struct PlatformSettingsRow: View {
                 }
                 .buttonStyle(.plain)
                 .help("Edit custom platform")
+                .accessibilityLabel("Edit \(option.displayName)")
                 
                 Button {
                     onDelete?()
@@ -636,6 +630,7 @@ private struct PlatformSettingsRow: View {
                 }
                 .buttonStyle(.plain)
                 .help("Delete custom platform")
+                .accessibilityLabel("Delete \(option.displayName)")
             }
 
             Button {
@@ -645,6 +640,7 @@ private struct PlatformSettingsRow: View {
             }
             .buttonStyle(.plain)
             .help("Grant folder access")
+            .accessibilityLabel("Grant access to \(option.displayName)")
             .disabled(!isEnabled)
 
             Button {
@@ -654,6 +650,7 @@ private struct PlatformSettingsRow: View {
             }
             .buttonStyle(.plain)
             .help("Reveal in Finder")
+            .accessibilityLabel("Reveal \(option.displayName) in Finder")
             .disabled(!isEnabled)
 
             Button {
@@ -663,6 +660,7 @@ private struct PlatformSettingsRow: View {
             }
             .buttonStyle(.plain)
             .help("Rescan this platform")
+            .accessibilityLabel("Rescan \(option.displayName)")
             .disabled(!isEnabled)
         }
         .padding(.vertical, 10)

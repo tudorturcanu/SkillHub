@@ -132,11 +132,33 @@ final class SkillScanner {
         for path in customPaths {
             guard !Task.isCancelled else { return results }
             SandboxBookmarkManager.resolveAndAccess(path: path) { url in
-                collectFromCustomDirectory(url, into: &results)
+                if let toolSource = toolSource(forAuthorizedPlatformPath: path) {
+                    collectFromDirectory(url, toolSource: toolSource, isGlobal: true, into: &results)
+                } else {
+                    collectFromCustomDirectory(url, into: &results)
+                }
             }
         }
 
         return results
+    }
+
+    /// Onboarding folders are first-class platform libraries, not generic custom
+    /// directories. Preserve their platform identity so filtering and creation flows
+    /// continue to behave as users expect.
+    private static func toolSource(forAuthorizedPlatformPath path: String) -> ToolSource? {
+        guard let platform = PlatformOption.onboarding.first(where: { option in
+            path == option.expandedSkillsPath || path == option.expandedXcodePath
+        }) else {
+            return nil
+        }
+
+        switch platform.id {
+        case "codex": return .codex
+        case "claude": return .claude
+        case "copilot": return .copilot
+        default: return nil
+        }
     }
 
     private static func collectFromCustomDirectory(_ directory: URL, into results: inout [ScannedSkillData]) {

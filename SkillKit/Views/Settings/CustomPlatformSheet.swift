@@ -23,6 +23,11 @@ struct CustomPlatformSheet: View {
     private let availableColors = [
         "purple", "orange", "blue", "green", "cyan", "red", "pink", "teal", "gray"
     ]
+
+    private var canSave: Bool {
+        !displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+        !skillsPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
     
     var body: some View {
         VStack(spacing: 0) {
@@ -87,6 +92,8 @@ struct CustomPlatformSheet: View {
                                         )
                                 }
                                 .buttonStyle(.plain)
+                                .accessibilityLabel("\(icon) icon")
+                                .accessibilityValue(iconName == icon ? "Selected" : "Not selected")
                             }
                         }
                     }
@@ -112,6 +119,8 @@ struct CustomPlatformSheet: View {
                                         )
                                 }
                                 .buttonStyle(.plain)
+                                .accessibilityLabel("\(colorName.capitalized) color")
+                                .accessibilityValue(iconColorName == colorName ? "Selected" : "Not selected")
                             }
                         }
                     }
@@ -134,10 +143,10 @@ struct CustomPlatformSheet: View {
                     let id = platformToEdit?.id ?? "custom_\(UUID().uuidString)"
                     let platform = PlatformOption(
                         id: id,
-                        displayName: displayName,
-                        detail: detail.isEmpty ? "Custom Platform" : detail,
-                        skillsPath: skillsPath,
-                        xcodePath: xcodePath.isEmpty ? nil : xcodePath,
+                        displayName: displayName.trimmingCharacters(in: .whitespacesAndNewlines),
+                        detail: detail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Custom Platform" : detail.trimmingCharacters(in: .whitespacesAndNewlines),
+                        skillsPath: skillsPath.trimmingCharacters(in: .whitespacesAndNewlines),
+                        xcodePath: xcodePath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : xcodePath.trimmingCharacters(in: .whitespacesAndNewlines),
                         iconName: iconName,
                         iconColorName: iconColorName
                     )
@@ -145,7 +154,7 @@ struct CustomPlatformSheet: View {
                     dismiss()
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(displayName.isEmpty || skillsPath.isEmpty)
+                .disabled(!canSave)
                 .keyboardShortcut(.defaultAction)
             }
             .padding()
@@ -172,7 +181,10 @@ struct CustomPlatformSheet: View {
         panel.prompt = "Choose"
         panel.begin { response in
             if response == .OK, let url = panel.url {
-                completion(url.path)
+                SandboxBookmarkManager.saveBookmark(for: url)
+                DispatchQueue.main.async {
+                    completion(url.path)
+                }
             }
         }
     }

@@ -17,6 +17,10 @@ struct DuplicateSkillSheet: View {
         sourceSkill?.itemKind ?? .skill
     }
 
+    private var trimmedName: String {
+        skillName.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     private var creatableTools: [ToolSource] {
         switch itemKind {
         case .skill:
@@ -35,6 +39,9 @@ struct DuplicateSkillSheet: View {
             Form {
                 TextField("New \(itemKind.singularName) name", text: $skillName)
                     .textFieldStyle(.roundedBorder)
+                    .onChange(of: skillName) {
+                        errorMessage = nil
+                    }
 
                 Picker("Tool", selection: $selectedTool) {
                     ForEach(creatableTools) { tool in
@@ -46,9 +53,10 @@ struct DuplicateSkillSheet: View {
             .formStyle(.grouped)
 
             if let error = errorMessage {
-                Text(error)
+                Label(error, systemImage: "exclamationmark.triangle.fill")
                     .font(.caption)
                     .foregroundStyle(.red)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
 
             HStack {
@@ -63,7 +71,7 @@ struct DuplicateSkillSheet: View {
                     duplicateItem()
                 }
                 .keyboardShortcut(.defaultAction)
-                .disabled(skillName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .disabled(trimmedName.isEmpty)
             }
         }
         .padding(24)
@@ -88,7 +96,7 @@ struct DuplicateSkillSheet: View {
         }
 
         let fm = FileManager.default
-        let sanitizedName = skillName
+        let sanitizedName = trimmedName
             .lowercased()
             .replacingOccurrences(of: " ", with: "-")
             .filter { $0.isLetter || $0.isNumber || $0 == "-" }
@@ -152,7 +160,7 @@ struct DuplicateSkillSheet: View {
                 if !parsed.frontmatter.isEmpty {
                     var fmData = parsed.frontmatter
                     fmData["name"] = sanitizedName
-                    fmData["description"] = skillName
+                    fmData["description"] = trimmedName
                     newContent = "---\n"
                     for (key, val) in fmData.sorted(by: { $0.key < $1.key }) {
                         newContent += "\(key): \(val)\n"
@@ -160,7 +168,7 @@ struct DuplicateSkillSheet: View {
                     newContent += "---\n\n\(parsed.content)"
                 } else {
                     if newContent.hasPrefix("# \(sourceSkill.name)") {
-                        newContent = "# \(skillName)" + newContent.dropFirst("# \(sourceSkill.name)".count)
+                        newContent = "# \(trimmedName)" + newContent.dropFirst("# \(sourceSkill.name)".count)
                     }
                 }
 
@@ -185,7 +193,7 @@ struct DuplicateSkillSheet: View {
                     filePath: filePath,
                     toolSource: selectedTool,
                     isDirectory: itemKind != .rule,
-                    name: skillName,
+                    name: trimmedName,
                     skillDescription: parsedNew.description,
                     content: parsedNew.content,
                     frontmatter: parsedNew.frontmatter,
