@@ -149,10 +149,32 @@ enum SSHService {
 
                 do {
                     try process.run()
-                    process.waitUntilExit()
 
-                    let stdoutData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
-                    let stderrData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
+                    // Drain both pipes concurrently with the process running, not
+                    // after `waitUntilExit()`. `findSkills` cats every remote
+                    // skill file into one command's stdout, so once combined
+                    // output exceeds the OS pipe buffer (64KB) the child blocks
+                    // writing to a full pipe while we'd otherwise block waiting
+                    // for it to exit — a deadlock. Reading concurrently keeps
+                    // the pipe draining the whole time.
+                    let readGroup = DispatchGroup()
+                    var stdoutData = Data()
+                    var stderrData = Data()
+
+                    readGroup.enter()
+                    DispatchQueue.global(qos: .userInitiated).async {
+                        stdoutData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
+                        readGroup.leave()
+                    }
+                    readGroup.enter()
+                    DispatchQueue.global(qos: .userInitiated).async {
+                        stderrData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
+                        readGroup.leave()
+                    }
+
+                    process.waitUntilExit()
+                    readGroup.wait()
+
                     let stdout = String(data: stdoutData, encoding: .utf8) ?? ""
                     let stderr = String(data: stderrData, encoding: .utf8) ?? ""
 
