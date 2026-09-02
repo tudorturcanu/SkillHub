@@ -33,7 +33,10 @@ struct SkillListView: View {
     @State private var activeAlert: ActiveAlert?
     @State private var selectedSkillPaths: Set<String> = []
 
-    private var baseFilteredSkills: [Skill] {
+    /// The sidebar selection alone, before quick filters and search. Shared by
+    /// the visible list and by `scopedTotalCount`, which reports how many items
+    /// the selection holds when a search or quick filter is narrowing it.
+    private var skillsMatchingSidebarFilter: [Skill] {
         var result = allSkills
 
         switch appState.sidebarFilter {
@@ -78,6 +81,12 @@ struct SkillListView: View {
         case .server(let serverID):
             result = result.filter { $0.remoteServer?.id == serverID }
         }
+
+        return result
+    }
+
+    private var baseFilteredSkills: [Skill] {
+        var result = skillsMatchingSidebarFilter
 
         switch appState.skillQuickFilter {
         case .all:
@@ -154,55 +163,11 @@ struct SkillListView: View {
     }
 
     private var scopedTotalCount: Int {
-        let savedSearch = appState.searchText
-        guard !savedSearch.isEmpty || appState.skillQuickFilter != .all else {
+        guard !appState.searchText.isEmpty || appState.skillQuickFilter != .all else {
             return baseFilteredSkills.count
         }
 
-        var result = allSkills
-        switch appState.sidebarFilter {
-        case .dashboard, .discover:
-            result = []
-        case .recent:
-            result = result.filter { $0.lastOpened != nil }
-        case .allSkills:
-            result = result.filter { $0.itemKind == .skill }
-        case .allRules:
-            result = result.filter { $0.itemKind == .rule }
-        case .needsReview:
-            result = result.filter(\.hasValidationWarnings)
-        case .securityReview:
-            result = securityScanningEnabled ? result.filter { !$0.securityScan.isClean } : []
-        case .favorites:
-            result = result.filter(\.isFavorite)
-        case .tool(let tool):
-            result = result.filter { $0.toolSources.contains(tool) }
-            if let kind = appState.toolKindFilter {
-                result = result.filter { $0.itemKind == kind }
-            }
-        case .customPlatform(let platformID):
-            if let platform = PlatformOption.customPlatforms.first(where: { $0.id == platformID }) {
-                result = result.filter { skill in
-                    guard skill.toolSource == .custom else { return false }
-                    let path = skill.filePath.lowercased()
-                    let platformSkills = platform.expandedSkillsPath.lowercased()
-                    let platformXcode = platform.expandedXcodePath?.lowercased()
-                    return path.hasPrefix(platformSkills) || (platformXcode != nil && path.hasPrefix(platformXcode!))
-                }
-                if let kind = appState.toolKindFilter {
-                    result = result.filter { $0.itemKind == kind }
-                }
-            } else {
-                result = []
-            }
-        case .collection(let collName):
-            result = result.filter { skill in
-                skill.collections.contains { $0.name == collName }
-            }
-        case .server(let serverID):
-            result = result.filter { $0.remoteServer?.id == serverID }
-        }
-        return result.count
+        return skillsMatchingSidebarFilter.count
     }
 
     private var selectedSkills: [Skill] {

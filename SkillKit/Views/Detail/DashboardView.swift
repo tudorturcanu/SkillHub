@@ -395,13 +395,26 @@ struct DashboardView: View {
     }
 
     // MARK: - System Health Audit
-    private var skillsWithIssues: [Skill] {
-        skills.filter { !$0.healthReport.issues.isEmpty }
+
+    /// Pairs each skill with its report so the report is built once per skill.
+    /// `healthReport` re-runs the security scan, validation, and a `stat` of the
+    /// skill's path, so reading it inside a sort comparator or a row body made
+    /// the dashboard rebuild cost grow with n log n.
+    private struct HealthAuditEntry: Identifiable {
+        let skill: Skill
+        let report: SkillHealthReport
+        var id: PersistentIdentifier { skill.id }
+    }
+
+    private var skillsWithIssues: [HealthAuditEntry] {
+        skills
+            .map { HealthAuditEntry(skill: $0, report: $0.healthReport) }
+            .filter { !$0.report.issues.isEmpty }
             .sorted {
-                if $0.healthReport.score != $1.healthReport.score {
-                    return $0.healthReport.score < $1.healthReport.score
+                if $0.report.score != $1.report.score {
+                    return $0.report.score < $1.report.score
                 }
-                return $0.name.localizedStandardCompare($1.name) == .orderedAscending
+                return $0.skill.name.localizedStandardCompare($1.skill.name) == .orderedAscending
             }
     }
 
@@ -440,7 +453,9 @@ struct DashboardView: View {
             } else {
                 let issuesToShow = Array(issues.prefix(4))
                 VStack(spacing: 0) {
-                    ForEach(issuesToShow) { skill in
+                    ForEach(issuesToShow) { entry in
+                        let skill = entry.skill
+                        let report = entry.report
                         HStack {
                             Image(systemName: skill.itemKind.icon)
                                 .foregroundStyle(skill.toolSource.color)
@@ -452,8 +467,7 @@ struct DashboardView: View {
                                     .font(.body)
                                     .fontWeight(.medium)
                                     .foregroundStyle(.primary)
-                                
-                                let report = skill.healthReport
+
                                 Text(report.issues.prefix(3).map(\.title).joined(separator: ", "))
                                     .font(.caption)
                                     .foregroundStyle(report.topSeverity?.color ?? .secondary)
@@ -461,7 +475,6 @@ struct DashboardView: View {
 
                             Spacer()
 
-                            let report = skill.healthReport
                             Text("\(report.score)")
                                 .font(.caption.bold())
                                 .monospacedDigit()
@@ -488,7 +501,7 @@ struct DashboardView: View {
                         .padding(.horizontal, 12)
                         .contentShape(Rectangle())
 
-                        if skill != issuesToShow.last {
+                        if entry.id != issuesToShow.last?.id {
                             Divider()
                                 .padding(.leading, 32)
                         }

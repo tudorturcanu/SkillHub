@@ -286,10 +286,32 @@ enum SecurityScanner {
 
     // MARK: Scan
 
+    /// Memoizes results by exact text. `scan` is a pure function of its input,
+    /// and the UI calls it from list filters, sort comparators, sidebar badges,
+    /// and every row body — so without this each redraw re-ran every rule over
+    /// every line of every skill. Also keeps `SecurityFinding.id` stable across
+    /// redraws, which `ForEach` relies on. NSCache is thread-safe and evicts
+    /// under memory pressure.
+    private final class CachedScan {
+        let result: SecurityScanResult
+        init(_ result: SecurityScanResult) { self.result = result }
+    }
+
+    private static let scanCache: NSCache<NSString, CachedScan> = {
+        let cache = NSCache<NSString, CachedScan>()
+        cache.countLimit = 512
+        return cache
+    }()
+
     /// Scan arbitrary text (a skill's markdown body, an embedded script, etc.).
     static func scan(text: String) -> SecurityScanResult {
         guard !text.isEmpty else {
             return SecurityScanResult(findings: [], riskScore: 0)
+        }
+
+        let cacheKey = text as NSString
+        if let cached = scanCache.object(forKey: cacheKey) {
+            return cached.result
         }
 
         var findings: [SecurityFinding] = []
@@ -312,7 +334,9 @@ enum SecurityScanner {
             }
         }
 
-        return SecurityScanResult(findings: findings, riskScore: score(for: findings))
+        let result = SecurityScanResult(findings: findings, riskScore: score(for: findings))
+        scanCache.setObject(CachedScan(result), forKey: cacheKey)
+        return result
     }
 
     /// Saturating weighted score, capped at 100. A single critical never

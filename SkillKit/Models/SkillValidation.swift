@@ -26,7 +26,7 @@ extension Skill {
         let trimmedDescription = skillDescription.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedContent = content.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        if !isRemote && !FileManager.default.fileExists(atPath: filePath) {
+        if !isRemote && !PathExistenceCache.fileExists(atPath: filePath) {
             issues.append(.init(
                 id: "missing-file",
                 severity: .warning,

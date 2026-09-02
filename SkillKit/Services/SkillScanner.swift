@@ -82,6 +82,7 @@ final class SkillScanner {
 
             await MainActor.run { [weak self] in
                 guard let self, self.scanGeneration == generation else { return }
+                PathExistenceCache.invalidate()
                 self.applyResults(results)
                 let total = CFAbsoluteTimeGetCurrent() - start
                 AppLogger.scanning.notice("Scan complete: \(results.count) skills applied in \(String(format: "%.2f", total))s")

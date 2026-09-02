@@ -67,14 +67,14 @@ enum SkillLinter {
             ))
         }
 
-        if fullContent.components(separatedBy: .newlines).contains(where: { $0 != $0.trimmingCharacters(in: .whitespaces) }) {
+        if fullContent.components(separatedBy: "\n").contains(where: { $0 != trimmingTrailingWhitespace($0) }) {
             fixes.append(.init(
                 id: "trim-trailing-whitespace",
                 title: "Trim trailing whitespace",
                 message: "Remove whitespace at line endings.",
                 apply: { content, _ in
-                    content.components(separatedBy: .newlines)
-                        .map { $0.trimmingCharacters(in: .whitespaces) }
+                    content.components(separatedBy: "\n")
+                        .map(trimmingTrailingWhitespace)
                         .joined(separator: "\n")
                 }
             ))
@@ -106,6 +106,21 @@ enum SkillLinter {
             }
             return content
         }
+    }
+
+    /// Trims only the end of a line. Trimming both ends would strip the
+    /// indentation that nested lists and fenced code blocks depend on, and
+    /// splitting on `\n` (rather than the newline character set) keeps CRLF
+    /// line endings from expanding into blank lines — the trailing `\r` is
+    /// whitespace, so it is removed here.
+    private static func trimmingTrailingWhitespace(_ line: String) -> String {
+        var end = line.endIndex
+        while end > line.startIndex {
+            let previous = line.index(before: end)
+            guard line[previous].isWhitespace else { break }
+            end = previous
+        }
+        return String(line[line.startIndex..<end])
     }
 
     private static func cleanMetadataValue(_ value: String) -> String {

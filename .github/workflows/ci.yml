@@ -23,3 +23,6 @@ jobs:
 
       - name: Build SkillKit
         run: xcodebuild -scheme SkillKit -configuration Debug CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO build
+
+      - name: Run Tests
+        run: swift test
