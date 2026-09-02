@@ -32,6 +32,19 @@ struct SkillListView: View {
     @AppStorage("securityScanningEnabled") private var securityScanningEnabled = true
     @State private var activeAlert: ActiveAlert?
     @State private var selectedSkillPaths: Set<String> = []
+    /// The row the user clicked most recently. With several rows selected, the
+    /// detail shows this one rather than an arbitrary member of the set.
+    @State private var lastClickedPath: String?
+    /// A selection value this view set itself. `onChange(of: selectedSkillPaths)`
+    /// compares against it to tell programmatic changes from user clicks.
+    @State private var programmaticSelection: Set<String>?
+    /// A path selected automatically (filter change, deletion). Automatic
+    /// selections must not stamp `lastOpened`.
+    @State private var suppressOpenedStampPath: String?
+    /// Where the selected row sat in the visible list, so a deletion can move
+    /// the selection to a neighbor instead of clearing it.
+    @State private var lastSelectedIndex: Int?
+    @State private var lastSelectedPath: String?
 
     /// The sidebar selection alone, before quick filters and search. Shared by
     /// the visible list and by `scopedTotalCount`, which reports how many items
@@ -243,51 +256,148 @@ struct SkillListView: View {
         }
     }
 
-    private func updateSelectionForCurrentFilter() {
-        let visiblePaths = Set(filteredSkills.map(\.resolvedPath))
-        selectedSkillPaths.formIntersection(visiblePaths)
+    // MARK: - Selection
 
-        if let selected = appState.selectedSkill, filteredSkills.contains(selected) {
-            selectedSkillPaths.insert(selected.resolvedPath)
-            return
-        }
-        appState.selectedSkill = filteredSkills.first
-        selectedSkillPaths = Set(filteredSkills.prefix(1).map(\.resolvedPath))
+    /// Changes the list highlight without it being mistaken for a user click.
+    private func setSelectionProgrammatically(_ paths: Set<String>) {
+        guard paths != selectedSkillPaths else { return }
+        programmaticSelection = paths
+        selectedSkillPaths = paths
     }
 
-    @ViewBuilder
-    private var emptyStateView: some View {
-        if let kind = appState.toolKindFilter {
-            ContentUnavailableView(
-                "No \(kind.displayName)",
-                systemImage: kind.icon,
-                description: Text("No \(kind.displayName.lowercased()) match the current filter.")
-            )
-        } else {
-            switch appState.sidebarFilter {
-            case .dashboard:
-                ContentUnavailableView("Dashboard", systemImage: "gauge.with.dots.needle.bottom.50percent",
-                    description: Text("Select Skills or Rules to browse individual files."))
-            case .discover:
-                ContentUnavailableView("Discover", systemImage: "sparkle.magnifyingglass",
-                    description: Text("Discover new skills from the library."))
-            case .recent:
-                ContentUnavailableView("No Recent Items", systemImage: "clock.badge.checkmark",
-                    description: Text("Open a skill or rule to add it to Recent."))
-            case .allRules:
-                ContentUnavailableView("No Rules", systemImage: "list.bullet.rectangle",
-                    description: Text("No rules match the current filter."))
-            case .needsReview:
-                ContentUnavailableView("Nothing Needs Review", systemImage: "checkmark.seal",
-                    description: Text("All indexed skills and rules have the expected metadata."))
-            case .securityReview:
-                ContentUnavailableView("No Security Findings", systemImage: "checkmark.shield",
-                    description: Text("Static scan found no risky patterns in this scope."))
-            default:
-                ContentUnavailableView("No Skills", systemImage: "doc.text",
-                    description: Text("No skills match the current filter."))
-            }
+    /// Selects `candidate` on the user's behalf (filter change, deletion).
+    /// Such selections don't count as "opened".
+    private func autoSelect(_ candidate: Skill?) {
+        if appState.selectedSkill != candidate {
+            suppressOpenedStampPath = candidate?.resolvedPath
+            appState.selectedSkill = candidate
         }
+        lastClickedPath = candidate?.resolvedPath
+        setSelectionProgrammatically(candidate.map { [$0.resolvedPath] } ?? [])
+    }
+
+    /// Sidebar filter changed: keep the current item if it's still visible,
+    /// otherwise fall back to the first row.
+    private func updateSelectionForCurrentFilter() {
+        let visible = filteredSkills
+        if let selected = appState.selectedSkill, visible.contains(selected) {
+            lastClickedPath = selected.resolvedPath
+            setSelectionProgrammatically([selected.resolvedPath])
+            return
+        }
+        autoSelect(visible.first)
+    }
+
+    /// Search, quick filter, scope, or sort changed: never hijack the detail.
+    /// The highlight follows the selected item while it's visible and simply
+    /// clears when the filter hides it; the detail keeps showing it.
+    private func reconcileHighlightWithVisibleRows() {
+        let visible = Set(filteredSkills.map(\.resolvedPath))
+        var highlight = selectedSkillPaths.intersection(visible)
+        if let selected = appState.selectedSkill, visible.contains(selected.resolvedPath) {
+            highlight.insert(selected.resolvedPath)
+        }
+        setSelectionProgrammatically(highlight)
+    }
+
+    /// The library changed (Trash, rescan, bulk delete). If the item that was
+    /// selected is gone, move to its neighbor rather than showing nothing.
+    private func handleLibraryChange() {
+        guard let previousPath = lastSelectedPath else { return }
+        guard !allSkills.contains(where: { $0.resolvedPath == previousPath }) else { return }
+        lastSelectedPath = nil
+
+        let visible = filteredSkills
+        guard !visible.isEmpty else {
+            autoSelect(nil)
+            return
+        }
+        let index = min(lastSelectedIndex ?? 0, visible.count - 1)
+        autoSelect(visible[index])
+    }
+
+    /// Records that the user explicitly opened `skill`. Only called for
+    /// deliberate selections (click, keyboard, dashboard, newly created item).
+    private func markOpened(_ skill: Skill) {
+        guard !skill.isDeleted else { return }
+        skill.lastOpened = .now
+        try? modelContext.save()
+    }
+
+    // MARK: - Empty state
+
+    private var isSearchOrQuickFilterActive: Bool {
+        !appState.searchText.isEmpty || appState.skillQuickFilter != .all
+    }
+
+    /// Copy tailored to the current sidebar filter, so an empty Rules list
+    /// doesn't say "No Skills" and an empty collection names itself.
+    private var emptyStateContent: (title: String, systemImage: String, description: String) {
+        let narrowed = isSearchOrQuickFilterActive
+
+        if let kind = appState.toolKindFilter {
+            return ("No \(kind.displayName)", kind.icon,
+                    narrowed ? "No \(kind.displayName.lowercased()) match the current search or filter."
+                             : "No \(kind.displayName.lowercased()) are installed for this tool.")
+        }
+
+        switch appState.sidebarFilter {
+        case .dashboard:
+            return ("Dashboard", "gauge.with.dots.needle.bottom.50percent",
+                    "Select Skills or Rules to browse individual files.")
+        case .discover:
+            return ("Discover", "sparkle.magnifyingglass", "Discover new skills from the library.")
+        case .recent:
+            return ("No Recent Items", "clock.badge.checkmark",
+                    narrowed ? "No recent items match the current search or filter."
+                             : "Open a skill or rule to add it to Recent.")
+        case .allSkills:
+            return ("No Skills", "doc.text",
+                    narrowed ? "No skills match the current search or filter."
+                             : "Create a skill or rescan to find installed ones.")
+        case .allRules:
+            return ("No Rules", "list.bullet.rectangle",
+                    narrowed ? "No rules match the current search or filter."
+                             : "Create a rule to get started.")
+        case .needsReview:
+            return ("Nothing Needs Review", "checkmark.seal",
+                    narrowed ? "No items needing review match the current search or filter."
+                             : "All indexed skills and rules have the expected metadata.")
+        case .securityReview:
+            return ("No Security Findings", "checkmark.shield",
+                    narrowed ? "No items with findings match the current search or filter."
+                             : "Static scan found no risky patterns in this scope.")
+        case .favorites:
+            return ("No Favorites", "star",
+                    narrowed ? "No favorites match the current search or filter."
+                             : "Mark a skill or rule as a favorite to see it here.")
+        case .tool(let tool):
+            return ("No \(tool.displayName) Items", tool.iconName,
+                    narrowed ? "No \(tool.displayName) items match the current search or filter."
+                             : "No skills or rules are installed for \(tool.displayName).")
+        case .customPlatform(let platformID):
+            let name = PlatformOption.customPlatforms.first(where: { $0.id == platformID })?.displayName ?? "Custom Platform"
+            return ("No \(name) Items", "square.grid.2x2",
+                    narrowed ? "No \(name) items match the current search or filter."
+                             : "No skills are installed for \(name).")
+        case .collection(let name):
+            return ("No Items in \(name)", "folder",
+                    narrowed ? "No items in \(name) match the current search or filter."
+                             : "Drag skills or rules onto \(name) in the sidebar to add them.")
+        case .server:
+            return ("No Remote Items", "server.rack",
+                    narrowed ? "No remote items match the current search or filter."
+                             : "Sync the server to load its skills and rules.")
+        }
+    }
+
+    private var emptyStateView: some View {
+        let content = emptyStateContent
+        return ContentUnavailableView(
+            content.title,
+            systemImage: content.systemImage,
+            description: Text(content.description)
+        )
     }
 
     @ViewBuilder
@@ -340,7 +450,7 @@ struct SkillListView: View {
                 appState.skillToDuplicate = skill
                 appState.showingDuplicateSkillSheet = true
             }
-            Button("Delete", role: .destructive) {
+            Button("Move to Trash", role: .destructive) {
                 activeAlert = .confirmDelete(skill)
             }
         }
@@ -362,9 +472,12 @@ struct SkillListView: View {
             if appState.selectedSkill == skill {
                 appState.selectedSkill = nil
             }
-            selectedSkillPaths.remove(skill.resolvedPath)
+            var remaining = selectedSkillPaths
+            remaining.remove(skill.resolvedPath)
+            setSelectionProgrammatically(remaining)
             modelContext.delete(skill)
             try modelContext.save()
+            // handleLibraryChange() moves the selection to a neighbor once the query updates.
         } catch {
             activeAlert = .deleteError(error.localizedDescription)
         }
@@ -372,18 +485,35 @@ struct SkillListView: View {
 
     private func deleteSelectedSkills() {
         let skillsToDelete = selectedLocalEditableSkills
-        do {
-            for skill in skillsToDelete {
+        var remaining = selectedSkillPaths
+        var failures: [String] = []
+
+        // One skill failing must not abandon the loop: that would leave the
+        // already-deleted rows pending in the context, to be committed later by
+        // an unrelated save, with the list still highlighting trashed files.
+        for skill in skillsToDelete {
+            do {
                 try skill.deleteFromDisk()
-                if appState.selectedSkill == skill {
-                    appState.selectedSkill = nil
-                }
-                selectedSkillPaths.remove(skill.resolvedPath)
-                modelContext.delete(skill)
+            } catch {
+                failures.append("\(skill.name): \(error.localizedDescription)")
+                continue
             }
+            if appState.selectedSkill == skill {
+                appState.selectedSkill = nil
+            }
+            remaining.remove(skill.resolvedPath)
+            modelContext.delete(skill)
+        }
+
+        setSelectionProgrammatically(remaining)
+        do {
             try modelContext.save()
         } catch {
-            activeAlert = .deleteError(error.localizedDescription)
+            failures.append(error.localizedDescription)
+        }
+
+        if !failures.isEmpty {
+            activeAlert = .deleteError(failures.joined(separator: "\n"))
         }
     }
 
@@ -507,6 +637,9 @@ struct SkillListView: View {
                         } label: {
                             Image(systemName: appState.toolKindFilter != nil ? "ellipsis.circle.fill" : "ellipsis.circle")
                         }
+                        .help("Filter by type")
+                        .accessibilityLabel("Filter by type")
+                        .accessibilityValue(appState.toolKindFilter?.displayName ?? "All")
                     }
                     Button {
                         NotificationCenter.default.post(name: .customScanPathsChanged, object: nil)
@@ -514,6 +647,7 @@ struct SkillListView: View {
                         Image(systemName: "arrow.triangle.2.circlepath")
                     }
                     .help("Rescan local skills")
+                    .accessibilityLabel("Rescan local skills")
 
                     Menu {
                         Button {
@@ -538,6 +672,8 @@ struct SkillListView: View {
                         Image(systemName: "plus")
                     }
                     .menuIndicator(.hidden)
+                    .help("New Skill or Rule")
+                    .accessibilityLabel("New Skill or Rule")
 
                     if selectedSkills.count > 1 {
                         Menu {
@@ -615,13 +751,14 @@ struct SkillListView: View {
                                 Button(role: .destructive) {
                                     activeAlert = .confirmDeleteSelected(selectedLocalEditableSkills.count)
                                 } label: {
-                                    Label("Delete Selected", systemImage: "trash")
+                                    Label("Move Selected to Trash", systemImage: "trash")
                                 }
                             }
                         } label: {
                             Image(systemName: "checklist")
                         }
                         .help("Bulk Actions")
+                        .accessibilityLabel("Bulk Actions")
                     }
                 }
             }
@@ -639,25 +776,25 @@ struct SkillListView: View {
                 )
             case .confirmDelete(let skill):
                 return Alert(
-                    title: Text("Delete \(skill.displayTypeName)?"),
-                    message: Text("This will permanently delete \"\(skill.name)\" from disk."),
-                    primaryButton: .destructive(Text("Delete")) {
+                    title: Text("Move \"\(skill.name)\" to Trash?"),
+                    message: Text("This will move the \(skill.displayTypeName.lowercased()) to the Trash."),
+                    primaryButton: .destructive(Text("Move to Trash")) {
                         deleteSkill(skill)
                     },
                     secondaryButton: .cancel()
                 )
             case .confirmDeleteSelected(let count):
                 return Alert(
-                    title: Text("Delete \(count) Items?"),
-                    message: Text("This will permanently delete the selected local editable items from disk. Remote and read-only items are skipped."),
-                    primaryButton: .destructive(Text("Delete")) {
+                    title: Text("Move \(count) Items to Trash?"),
+                    message: Text("This will move the selected local editable items to the Trash. Remote and read-only items are skipped."),
+                    primaryButton: .destructive(Text("Move to Trash")) {
                         deleteSelectedSkills()
                     },
                     secondaryButton: .cancel()
                 )
             case .deleteError(let message):
                 return Alert(
-                    title: Text("Delete Failed"),
+                    title: Text("Couldn't Complete"),
                     message: Text(message),
                     dismissButton: .default(Text("OK"))
                 )
@@ -672,37 +809,99 @@ struct SkillListView: View {
         .overlay {
             if filteredSkills.isEmpty { emptyStateView }
         }
+        .onAppear {
+            // Arriving with a selection already made elsewhere (dashboard,
+            // a newly created or duplicated item): that was an explicit choice.
+            guard let selected = appState.selectedSkill else { return }
+            let visible = filteredSkills
+            lastSelectedPath = selected.resolvedPath
+            lastSelectedIndex = visible.firstIndex(of: selected)
+            if visible.contains(selected) {
+                lastClickedPath = selected.resolvedPath
+                setSelectionProgrammatically([selected.resolvedPath])
+            }
+            markOpened(selected)
+        }
         .onChange(of: appState.sidebarFilter) {
             updateSelectionForCurrentFilter()
         }
-        .onChange(of: selectedSkillPaths) {
-            guard let selectedPath = selectedSkillPaths.first else {
+        .onChange(of: selectedSkillPaths) { oldValue, newValue in
+            let isProgrammatic = programmaticSelection == newValue
+            programmaticSelection = nil
+
+            // Remember what was clicked last so multi-selection shows that row.
+            let added = newValue.subtracting(oldValue)
+            if added.count == 1, let path = added.first {
+                lastClickedPath = path
+            } else if let current = lastClickedPath, !newValue.contains(current) {
+                lastClickedPath = filteredSkills.first { newValue.contains($0.resolvedPath) }?.resolvedPath
+            }
+
+            guard !isProgrammatic else { return }
+
+            let visible = filteredSkills
+            guard !newValue.isEmpty else {
+                // Only a click on empty space counts as a deselect. Rows that
+                // vanished because a filter hid them keep the detail as-is.
+                let visiblePaths = Set(visible.map(\.resolvedPath))
+                guard oldValue.contains(where: { visiblePaths.contains($0) }) else { return }
+                lastSelectedPath = nil
                 appState.selectedSkill = nil
                 return
             }
-            appState.selectedSkill = filteredSkills.first { $0.resolvedPath == selectedPath }
-                ?? allSkills.first { $0.resolvedPath == selectedPath }
+
+            let detailPath = lastClickedPath.flatMap { newValue.contains($0) ? $0 : nil }
+                ?? visible.first { newValue.contains($0.resolvedPath) }?.resolvedPath
+                ?? newValue.first
+            guard let detailPath else { return }
+            let skill = visible.first { $0.resolvedPath == detailPath }
+                ?? allSkills.first { $0.resolvedPath == detailPath }
+            if appState.selectedSkill != skill {
+                appState.selectedSkill = skill
+            }
         }
-        .onChange(of: appState.selectedSkill?.resolvedPath) {
-            guard let selectedPath = appState.selectedSkill?.resolvedPath else {
-                selectedSkillPaths = []
+        .onChange(of: appState.selectedSkill?.resolvedPath) { _, newPath in
+            guard let newPath else {
+                setSelectionProgrammatically([])
                 return
             }
-            if !selectedSkillPaths.contains(selectedPath) {
-                selectedSkillPaths = [selectedPath]
+            let visible = filteredSkills
+            lastSelectedPath = newPath
+            lastSelectedIndex = visible.firstIndex { $0.resolvedPath == newPath }
+
+            if visible.contains(where: { $0.resolvedPath == newPath }) {
+                if !selectedSkillPaths.contains(newPath) {
+                    lastClickedPath = newPath
+                    setSelectionProgrammatically([newPath])
+                }
+            } else {
+                setSelectionProgrammatically([])
+            }
+
+            // Automatic selections (filter change, deletion) don't count as opening.
+            if suppressOpenedStampPath == newPath {
+                suppressOpenedStampPath = nil
+            } else if let skill = appState.selectedSkill {
+                markOpened(skill)
             }
         }
+        .onChange(of: allSkills.map(\.resolvedPath)) {
+            handleLibraryChange()
+        }
         .onChange(of: appState.skillQuickFilter) {
-            updateSelectionForCurrentFilter()
+            reconcileHighlightWithVisibleRows()
         }
         .onChange(of: appState.skillSearchScope) {
-            updateSelectionForCurrentFilter()
+            reconcileHighlightWithVisibleRows()
         }
         .onChange(of: appState.skillSortOption) {
-            updateSelectionForCurrentFilter()
+            reconcileHighlightWithVisibleRows()
         }
         .onChange(of: appState.searchText) {
-            updateSelectionForCurrentFilter()
+            reconcileHighlightWithVisibleRows()
+        }
+        .onChange(of: appState.toolKindFilter) {
+            reconcileHighlightWithVisibleRows()
         }
         .onChange(of: securityScanningEnabled) {
             if !securityScanningEnabled {
@@ -716,7 +915,7 @@ struct SkillListView: View {
                     appState.skillSortOption = .nameAscending
                 }
             }
-            updateSelectionForCurrentFilter()
+            reconcileHighlightWithVisibleRows()
         }
     }
 }
@@ -869,6 +1068,7 @@ struct SkillRow: View {
                 Image(systemName: kindIcon)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
+                    .accessibilityLabel(skill.itemKind.singularName)
             }
 
             Text(skill.name)
@@ -884,12 +1084,16 @@ struct SkillRow: View {
             }
             .buttonStyle(.plain)
             .help(skill.isFavorite ? "Remove Favorite" : "Add Favorite")
+            .accessibilityLabel("Favorite")
+            .accessibilityValue(skill.isFavorite ? "On" : "Off")
 
             if skill.hasValidationWarnings {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.caption2)
                     .foregroundStyle(.orange)
                     .help(skill.validationIssues.map(\.title).joined(separator: "\n"))
+                    .accessibilityLabel("Needs review")
+                    .accessibilityValue(skill.validationIssues.map(\.title).joined(separator: ", "))
             }
 
             let securityScan = showSecurityStatus ? skill.securityScan : nil
@@ -898,6 +1102,16 @@ struct SkillRow: View {
                     .font(.caption2)
                     .foregroundStyle(securityScan.topSeverity?.color ?? .secondary)
                     .help("\(securityScan.rating): \(securityScan.summaryText)\n\(securityScan.categorySummaryText)")
+                    .accessibilityLabel("Security findings")
+                    .accessibilityValue("\(securityScan.rating): \(securityScan.summaryText)")
+            }
+
+            if skill.isReadOnly {
+                Image(systemName: "lock.fill")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary.opacity(0.7))
+                    .help("Read-only")
+                    .accessibilityLabel("Read-only")
             }
 
             Spacer()
@@ -916,8 +1130,10 @@ struct SkillRow: View {
 
             HStack(spacing: 3) {
                 ForEach(skill.toolSources, id: \.self) { tool in
+                    let toolName = tool == .custom ? (skill.customPlatform?.displayName ?? tool.displayName) : tool.displayName
                     ToolIcon(tool: tool, customPlatform: tool == .custom ? skill.customPlatform : nil, size: 14)
-                        .help(tool == .custom ? (skill.customPlatform?.displayName ?? tool.displayName) : tool.displayName)
+                        .help(toolName)
+                        .accessibilityLabel(toolName)
                         .opacity(0.6)
                 }
             }

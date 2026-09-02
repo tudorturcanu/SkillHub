@@ -16,7 +16,21 @@ struct DiscoverView: View {
     @State private var installSuccess = false
     @State private var searchTask: Task<Void, Never>?
     @State private var contentTask: Task<Void, Never>?
+    @State private var installResetTask: Task<Void, Never>?
     @State private var sortOption: SortOption = .relevance
+    /// Detected install targets. Probing them walks `PATH` and the filesystem, so it is
+    /// done here (on appear / after an install) rather than in `body`, which re-evaluates
+    /// on every keystroke in the search field.
+    @State private var installedAgents: [AgentTarget] = []
+    /// Per-target install state for the selected skill, keyed by `AgentTarget.id`.
+    /// Refreshed alongside `installedAgents` and whenever the selected skill changes.
+    @State private var targetInstallStates: [String: TargetInstallState] = [:]
+
+    /// The filesystem facts a target card renders, sampled outside `body`.
+    private struct TargetInstallState {
+        let isInstalled: Bool
+        let destinationPath: String
+    }
 
     enum SortOption {
         case relevance
@@ -32,10 +46,6 @@ struct DiscoverView: View {
         }
     }
     private let featuredQueries = ["swift", "testing", "xcode", "supabase", "docs", "git"]
-
-    private var installedAgents: [AgentTarget] {
-        AgentTarget.installed
-    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -56,6 +66,7 @@ struct DiscoverView: View {
         }
         .navigationTitle("Discover")
         .onAppear {
+            refreshInstallTargets()
             // Installing a library item into every detected tool is surprising and can
             // create configuration directories the user never intended to manage.
             selectedAgents = installedAgents.contains(where: { $0.id == "agents" }) ? ["agents"] : []
@@ -66,6 +77,7 @@ struct DiscoverView: View {
         .onDisappear {
             searchTask?.cancel()
             contentTask?.cancel()
+            installResetTask?.cancel()
         }
     }
 
@@ -115,6 +127,7 @@ struct DiscoverView: View {
                 .buttonStyle(.plain)
                 .foregroundStyle(Color.accentColor)
                 .help("Search registry")
+                .accessibilityLabel("Search registry")
                 .disabled(searchText.trimmingCharacters(in: .whitespacesAndNewlines).count < 2)
             }
             .padding(.vertical, 10)
@@ -177,6 +190,18 @@ struct DiscoverView: View {
             if results.isEmpty && isSearching {
                 ProgressView("Searching library...")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if results.isEmpty, let searchError {
+                ContentUnavailableView {
+                    Label("Couldn't reach the registry", systemImage: "wifi.exclamationmark")
+                } description: {
+                    Text(searchError)
+                } actions: {
+                    Button("Retry") {
+                        runSearch(query: searchText)
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if results.isEmpty {
                 ContentUnavailableView {
                     Label("No Skills Found", systemImage: "compass")
@@ -203,10 +228,16 @@ struct DiscoverView: View {
                 .listStyle(.plain)
             }
 
-            if let searchError, selectedSkill == nil {
+            if let searchError, selectedSkill == nil, !results.isEmpty {
                 Divider()
-                InlineErrorView(message: searchError)
-                    .padding(12)
+                HStack(spacing: 8) {
+                    InlineErrorView(message: searchError)
+                    Button("Retry") {
+                        runSearch(query: searchText)
+                    }
+                    .controlSize(.small)
+                }
+                .padding(12)
             }
         }
     }
@@ -301,6 +332,11 @@ struct DiscoverView: View {
                         Label("Preview Unavailable", systemImage: "exclamationmark.triangle")
                     } description: {
                         Text(previewError)
+                    } actions: {
+                        Button("Retry") {
+                            selectSkill(skill)
+                        }
+                        .buttonStyle(.borderedProminent)
                     }
                 }
             }
@@ -341,11 +377,13 @@ struct DiscoverView: View {
                     .foregroundStyle(.secondary)
             } else {
                 ScrollView {
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 120), spacing: 6)], spacing: 6) {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 200), spacing: 6)], spacing: 6) {
                         ForEach(installedAgents) { agent in
                             AgentTargetCard(
                                 agent: agent,
-                                isSelected: selectedAgents.contains(agent.id)
+                                isSelected: selectedAgents.contains(agent.id),
+                                isInstalled: targetInstallStates[agent.id]?.isInstalled ?? false,
+                                destinationPath: targetInstallStates[agent.id]?.destinationPath ?? ""
                             ) {
                                 toggleAgent(agent)
                             }
@@ -353,7 +391,7 @@ struct DiscoverView: View {
                     }
                     .padding(.vertical, 2)
                 }
-                .frame(maxHeight: 85)
+                .frame(maxHeight: 130)
             }
 
             HStack {
@@ -391,6 +429,29 @@ struct DiscoverView: View {
         .padding(.vertical, 12)
         .padding(.horizontal, 16)
         .background(Color(NSColor.windowBackgroundColor).opacity(0.3))
+    }
+
+    /// Re-probes which agents are present and what is already installed for the selected
+    /// skill. Deliberately called from event handlers only — `AgentTarget.installed` walks
+    /// `PATH` and several directories, which must never happen during view evaluation.
+    private func refreshInstallTargets() {
+        installedAgents = AgentTarget.installed
+        refreshTargetInstallStates(for: selectedSkill)
+    }
+
+    private func refreshTargetInstallStates(for skill: SkillRegistry.RegistrySkill?) {
+        guard let skill else {
+            targetInstallStates = [:]
+            return
+        }
+        var states: [String: TargetInstallState] = [:]
+        for agent in installedAgents {
+            states[agent.id] = TargetInstallState(
+                isInstalled: registry.isInstalled(skillName: skill.skillId, target: agent),
+                destinationPath: displayPath(registry.installedDestination(for: skill.skillId, target: agent))
+            )
+        }
+        targetInstallStates = states
     }
 
     private func debounceSearch(query: String) {
@@ -464,6 +525,7 @@ struct DiscoverView: View {
         installError = nil
         installSuccess = false
         isFetchingContent = true
+        refreshTargetInstallStates(for: skill)
 
         contentTask = Task {
             do {
@@ -491,6 +553,19 @@ struct DiscoverView: View {
         } else {
             selectedAgents.insert(agent.id)
         }
+        // Changing targets starts a fresh install attempt, so clear stale feedback and
+        // re-enable the Install button.
+        installResetTask?.cancel()
+        installSuccess = false
+        installError = nil
+    }
+
+    private func displayPath(_ path: String) -> String {
+        let home = AppPaths.userHomeDirectory
+        if path.hasPrefix(home + "/") {
+            return "~" + path.dropFirst(home.count)
+        }
+        return path
     }
 
     private func performInstall(content: String, skillName: String) {
@@ -504,7 +579,18 @@ struct DiscoverView: View {
             try registry.install(content: content, skillName: skillName, agents: agents)
             installSuccess = true
             isInstalling = false
+            // The install just created directories, so both the detected-target list and
+            // the per-target badges need re-sampling.
+            refreshInstallTargets()
             NotificationCenter.default.post(name: .customScanPathsChanged, object: nil)
+            // Let the confirmation show briefly, then re-enable the button so the user can
+            // pick other targets and install again without reselecting the skill.
+            installResetTask?.cancel()
+            installResetTask = Task {
+                try? await Task.sleep(for: .seconds(2.5))
+                guard !Task.isCancelled else { return }
+                installSuccess = false
+            }
         } catch {
             self.installError = error.localizedDescription
             isInstalling = false
@@ -650,6 +736,8 @@ private struct DiscoverResultRow: View {
 private struct AgentTargetCard: View {
     let agent: AgentTarget
     let isSelected: Bool
+    var isInstalled: Bool = false
+    var destinationPath: String = ""
     let action: () -> Void
 
     @State private var isHovered = false
@@ -668,10 +756,29 @@ private struct AgentTargetCard: View {
                     .clipShape(RoundedRectangle(cornerRadius: 4))
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(agent.displayName)
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
+                    HStack(spacing: 5) {
+                        Text(agent.displayName)
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                        if isInstalled {
+                            Text("Installed")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundStyle(.green)
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 1)
+                                .background(Color.green.opacity(0.12))
+                                .clipShape(Capsule())
+                        }
+                    }
+                    if !destinationPath.isEmpty {
+                        Text(destinationPath)
+                            .font(.system(size: 9, design: .monospaced))
+                            .foregroundStyle(.tertiary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                            .help(destinationPath)
+                    }
                 }
 
                 Spacer(minLength: 0)
@@ -679,6 +786,7 @@ private struct AgentTargetCard: View {
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                     .font(.system(size: 12, weight: .bold))
                     .foregroundStyle(isSelected ? Color.accentColor : Color.secondary.opacity(0.3))
+                    .accessibilityHidden(true)
             }
             .padding(.vertical, 5)
             .padding(.horizontal, 8)
@@ -695,6 +803,8 @@ private struct AgentTargetCard: View {
             }
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(agent.displayName + (isInstalled ? ", already installed" : ""))
+        .accessibilityValue(isSelected ? "Selected" : "Not selected")
     }
 
     private func agentIcon(for id: String) -> String {

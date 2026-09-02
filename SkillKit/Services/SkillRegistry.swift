@@ -195,14 +195,36 @@ final class SkillRegistry {
 
     // MARK: - Install
 
-    func install(content: String, skillName: String, agents: [AgentTarget]) throws {
+    /// Normalizes a registry skill id into the folder name used on disk.
+    /// Returns nil when nothing usable remains after sanitizing.
+    static func sanitizedInstallName(_ skillName: String) -> String? {
         let sanitized = skillName
             .lowercased()
             .replacingOccurrences(of: " ", with: "-")
             .filter { $0.isLetter || $0.isNumber || $0 == "-" || $0 == "." || $0 == "_" }
             .trimmingCharacters(in: CharacterSet(charactersIn: ".-"))
+        return sanitized.isEmpty ? nil : sanitized
+    }
 
-        guard !sanitized.isEmpty else {
+    /// The folder a given target receives for `skillName` — either the canonical copy or a
+    /// symlink into the library. Mirrors the layout `install` produces.
+    func installedDestination(for skillName: String, target: AgentTarget) -> String {
+        let name = Self.sanitizedInstallName(skillName) ?? skillName
+        return "\(target.expandedSkillsDir)/\(name)"
+    }
+
+    /// True when the destination for `skillName` already exists for the target (a real
+    /// directory or a symlink, even a dangling one).
+    func isInstalled(skillName: String, target: AgentTarget) -> Bool {
+        let path = installedDestination(for: skillName, target: target)
+        let fm = FileManager.default
+        if fm.fileExists(atPath: path) { return true }
+        // fileExists follows symlinks; a dangling link still means "installed" here.
+        return (try? fm.destinationOfSymbolicLink(atPath: path)) != nil
+    }
+
+    func install(content: String, skillName: String, agents: [AgentTarget]) throws {
+        guard let sanitized = Self.sanitizedInstallName(skillName) else {
             throw RegistryError.invalidSkillName
         }
 

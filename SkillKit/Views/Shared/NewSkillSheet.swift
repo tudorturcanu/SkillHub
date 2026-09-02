@@ -23,6 +23,7 @@ struct NewSkillSheet: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(AppState.self) private var appState
     @State private var skillName = ""
+    @State private var skillDescription = ""
     @State private var selectedTool: ToolSource = .agents
     @State private var selectedTemplate: SkillTemplate = .blank
     @State private var selectedRuleTemplate: RuleTemplate = .blank
@@ -32,6 +33,69 @@ struct NewSkillSheet: View {
 
     private var trimmedName: String {
         skillName.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var trimmedDescription: String {
+        skillDescription.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// The on-disk identifier derived from the display name: lowercased,
+    /// spaces to hyphens, anything but letters/digits/hyphens dropped.
+    static func slug(from name: String) -> String {
+        name.trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .replacingOccurrences(of: " ", with: "-")
+            .filter { $0.isLetter || $0.isNumber || $0 == "-" }
+    }
+
+    private var slug: String { Self.slug(from: trimmedName) }
+
+    /// Where the file will be written for the current name, kind, and tool.
+    private var destinationPath: String? {
+        guard !slug.isEmpty else { return nil }
+        switch itemKind {
+        case .rule:
+            guard let dir = selectedTool.globalRulePaths.first else { return nil }
+            return "\(dir)/\(slug).md"
+        case .skill:
+            guard let dir = selectedTool.globalPaths.first else { return nil }
+            return "\(dir)/\(slug)/SKILL.md"
+        }
+    }
+
+    private var destinationPreview: String? {
+        destinationPath?.replacingOccurrences(of: AppPaths.userHomeDirectory, with: "~")
+    }
+
+    @ViewBuilder
+    private var namePreviewCaption: some View {
+        if !trimmedName.isEmpty {
+            if slug.isEmpty {
+                Text("Name must contain at least one letter or number.")
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            } else {
+                VStack(alignment: .leading, spacing: 2) {
+                    if let destinationPreview {
+                        Text(verbatim: destinationPreview)
+                            .font(.caption.monospaced())
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                            .truncationMode(.middle)
+                            .textSelection(.enabled)
+                    } else {
+                        Text("\(selectedTool.displayName) has no \(itemKind.displayName.lowercased()) folder.")
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    }
+                    if slug != trimmedName {
+                        Text("Saved with the identifier “\(slug)”.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+        }
     }
 
     private var creatableTools: [ToolSource] {
@@ -50,11 +114,19 @@ struct NewSkillSheet: View {
                 .fontWeight(.bold)
 
             Form {
-                TextField("\(itemKind.singularName) name", text: $skillName)
-                    .textFieldStyle(.roundedBorder)
-                    .onChange(of: skillName) {
-                        errorMessage = nil
-                    }
+                VStack(alignment: .leading, spacing: 4) {
+                    TextField("\(itemKind.singularName) name", text: $skillName)
+                        .textFieldStyle(.roundedBorder)
+                        .onChange(of: skillName) {
+                            errorMessage = nil
+                        }
+                    namePreviewCaption
+                }
+
+                if itemKind == .skill {
+                    TextField("Description", text: $skillDescription, prompt: Text("Optional — when the assistant should use this skill"))
+                        .textFieldStyle(.roundedBorder)
+                }
 
                 Picker("Tool", selection: $selectedTool) {
                     ForEach(creatableTools) { tool in
@@ -102,7 +174,7 @@ struct NewSkillSheet: View {
             }
         }
         .padding(24)
-        .frame(width: 400)
+        .frame(width: 440)
         .onAppear {
             // Ensure selectedTool is valid for the current item kind
             if !creatableTools.contains(selectedTool) {
@@ -113,10 +185,7 @@ struct NewSkillSheet: View {
 
     private func createItem() {
         let fm = FileManager.default
-        let sanitizedName = trimmedName
-            .lowercased()
-            .replacingOccurrences(of: " ", with: "-")
-            .filter { $0.isLetter || $0.isNumber || $0 == "-" }
+        let sanitizedName = slug
 
         guard !sanitizedName.isEmpty else {
             errorMessage = "Invalid name"
@@ -160,7 +229,12 @@ struct NewSkillSheet: View {
                     return
                 }
 
-                let boilerplate = generateBoilerplate(name: trimmedName, skillID: sanitizedName, tool: selectedTool)
+                let boilerplate = generateBoilerplate(
+                    name: trimmedName,
+                    skillID: sanitizedName,
+                    description: trimmedDescription,
+                    tool: selectedTool
+                )
                 try boilerplate.write(toFile: filePath, atomically: true, encoding: .utf8)
 
                 // When creating a Global skill, symlink from each installed agent's skills dir
@@ -213,7 +287,24 @@ struct NewSkillSheet: View {
         }
     }
 
-    private func generateBoilerplate(name: String, skillID: String, tool: ToolSource) -> String {
+    /// A `description:` frontmatter line, or nothing when the user left it blank.
+    /// Values with YAML-sensitive characters are double-quoted (the parser unquotes).
+    private func descriptionFrontmatterLine(_ description: String) -> String {
+        guard !description.isEmpty else { return "" }
+        let needsQuoting = description.contains(":")
+            || description.contains("#")
+            || description.contains("\"")
+            || description.first.map { "[]{}&*!|>'%@`-?".contains($0) } == true
+        if needsQuoting {
+            let escaped = description
+                .replacingOccurrences(of: "\\", with: "\\\\")
+                .replacingOccurrences(of: "\"", with: "\\\"")
+            return "description: \"\(escaped)\"\n"
+        }
+        return "description: \(description)\n"
+    }
+
+    private func generateBoilerplate(name: String, skillID: String, description: String, tool: ToolSource) -> String {
         switch itemKind {
         case .rule:
             var ruleContent = "Add your assistant rule content here."
@@ -269,13 +360,14 @@ struct NewSkillSheet: View {
                 break
             }
             
+            let descriptionLine = descriptionFrontmatterLine(description)
+
             switch tool {
             case .claude, .cursor, .agents:
                 return """
                 ---
                 name: \(skillID)
-                description: \(name)
-                generator: skillkit
+                \(descriptionLine)generator: skillkit
                 ---
 
                 # \(name) (SkillKit Skill)
@@ -290,8 +382,7 @@ struct NewSkillSheet: View {
                 return """
                 ---
                 name: \(skillID)
-                description: \(name)
-                generator: skillkit
+                \(descriptionLine)generator: skillkit
                 ---
 
                 # \(name) (SkillKit Skill)

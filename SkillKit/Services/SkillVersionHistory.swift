@@ -30,6 +30,22 @@ enum SkillVersionHistory {
         return snapshots.sorted { $0.createdAt > $1.createdAt }
     }
 
+    /// Number of stored snapshots without materialising their contents.
+    /// Still parses the JSON, so cache the answer in view state and refresh
+    /// it when the skill changes or is saved — don't call it per render.
+    static func snapshotCount(for skill: Skill) -> Int {
+        let url = historyURL(for: skill.filePath)
+        guard let data = try? Data(contentsOf: url),
+              let stubs = try? JSONDecoder().decode([SnapshotStub].self, from: data) else {
+            return 0
+        }
+        return stubs.count
+    }
+
+    private struct SnapshotStub: Decodable {
+        let id: UUID
+    }
+
     static func recordSnapshot(for skill: Skill, content: String, reason: String) {
         guard !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
 

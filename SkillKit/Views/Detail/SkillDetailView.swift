@@ -92,6 +92,16 @@ struct SkillDetailView: View {
     @State private var autoSaveTask: Task<Void, Never>?
     @State private var showingComposePanel = false
     @State private var showingLintFixes = false
+    /// A lint fix awaiting before/after review. Nothing is written until Apply.
+    @State private var pendingLintPreview: LintFixPreview?
+    /// The skill `document` currently represents. Kept separately from `skill`
+    /// so pending edits can be flushed to the *previous* skill when the
+    /// selection changes underneath this view.
+    @State private var loadedSkill: Skill?
+    /// The `fileModifiedDate` we last accounted for; lets us tell a real
+    /// external change apart from our own save or a selection switch.
+    @State private var observedModifiedDate: Date?
+    @State private var showingExternalChangeBar = false
 
     private enum ViewMode: String, CaseIterable, Identifiable {
         case edit
@@ -107,6 +117,16 @@ struct SkillDetailView: View {
         @Bindable var document = document
 
         VStack(spacing: 0) {
+            if skill.isReadOnly {
+                readOnlyBar
+                Divider()
+            }
+
+            if showingExternalChangeBar {
+                externalChangeBar
+                Divider()
+            }
+
             ZStack(alignment: .bottomTrailing) {
                 switch viewMode {
                 case .preview:
@@ -144,8 +164,9 @@ struct SkillDetailView: View {
         }
         .navigationTitle(skill.name)
         .onAppear {
+            loadedSkill = skill
+            observedModifiedDate = skill.fileModifiedDate
             document.load(from: skill)
-            markSkillOpened()
             viewMode = preferPreview ? .preview : .edit
         }
         .onChange(of: viewMode) {
@@ -155,26 +176,63 @@ struct SkillDetailView: View {
                 preferPreview = false
             }
         }
-        .onChange(of: skill.filePath) {
-            autoSaveTask?.cancel()
+        .onChange(of: skill.filePath) { _, _ in
+            // Flush edits to the skill we were showing before repointing the document.
+            flushPendingSave()
+            showingExternalChangeBar = false
+            loadedSkill = skill
+            observedModifiedDate = skill.fileModifiedDate
             document.load(from: skill)
-            markSkillOpened()
+        }
+        .onChange(of: skill.fileModifiedDate) { _, _ in
+            handleFileModifiedDateChange()
         }
         .onChange(of: document.editorContent) {
-            guard !skill.isReadOnly else { return }
-            autoSaveTask?.cancel()
-            autoSaveTask = Task {
-                try? await Task.sleep(for: .seconds(1))
-                guard !Task.isCancelled, document.hasUnsavedChanges else { return }
-                document.save(to: skill)
-            }
+            scheduleAutosave()
         }
         .onDisappear {
-            autoSaveTask?.cancel()
+            flushPendingSave()
         }
         .onReceive(NotificationCenter.default.publisher(for: .saveCurrentSkill)) { _ in
             guard !skill.isReadOnly else { return }
+            autoSaveTask?.cancel()
+            showingExternalChangeBar = false
             document.save(to: skill)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .applicationWillTerminate)) { _ in
+            flushPendingSave()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .deleteCurrentSkill)) { _ in
+            guard !skill.isReadOnly else { return }
+            activeAlert = .confirmDelete
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .setDetailViewMode)) { notification in
+            guard let raw = notification.object as? String,
+                  let mode = ViewMode(rawValue: raw) else { return }
+            viewMode = mode
+        }
+        .sheet(item: $pendingLintPreview) { preview in
+            LintFixPreviewSheet(
+                preview: preview,
+                onApply: commitLintFix,
+                onCancel: { pendingLintPreview = nil }
+            )
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .jumpToEditorLine)) { notification in
+            // Findings inside bundled scripts point at another file; only the
+            // main document can be scrolled to here.
+            guard notification.userInfo?["file"] == nil,
+                  let line = notification.userInfo?["line"] as? Int else { return }
+            viewMode = .edit
+            // Give the editor a moment to mount if we just switched to it.
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(120))
+                NotificationCenter.default.post(
+                    name: .scrollEditorToLine,
+                    object: nil,
+                    userInfo: ["line": line]
+                )
+            }
         }
         .alert("Save Error", isPresented: $document.showingSaveError) {
             Button("OK") {}
@@ -184,12 +242,19 @@ struct SkillDetailView: View {
         .toolbar {
             ToolbarItem {
                 Picker("Mode", selection: $viewMode) {
-                    Image(systemName: "pencil").tag(ViewMode.edit)
-                    Image(systemName: "eye").tag(ViewMode.preview)
-                    Image(systemName: "play.circle").tag(ViewMode.playground)
+                    Label("Edit", systemImage: "pencil")
+                        .labelStyle(.iconOnly)
+                        .tag(ViewMode.edit)
+                    Label("Preview", systemImage: "eye")
+                        .labelStyle(.iconOnly)
+                        .tag(ViewMode.preview)
+                    Label("Prompt Playground", systemImage: "play.circle")
+                        .labelStyle(.iconOnly)
+                        .tag(ViewMode.playground)
                 }
                 .pickerStyle(.segmented)
                 .help("Switch view mode: Edit, Preview, or Prompt Playground")
+                .accessibilityLabel("View mode")
             }
             ToolbarItem {
                 Button {
@@ -199,6 +264,9 @@ struct SkillDetailView: View {
                     Image(systemName: skill.isFavorite ? "star.fill" : "star")
                         .foregroundStyle(skill.isFavorite ? .yellow : .secondary)
                 }
+                .help(skill.isFavorite ? "Remove from Favorites" : "Add to Favorites")
+                .accessibilityLabel("Favorite")
+                .accessibilityValue(skill.isFavorite ? "On" : "Off")
             }
             if !skill.isReadOnly {
                 ToolbarItem {
@@ -208,6 +276,7 @@ struct SkillDetailView: View {
                         Image(systemName: "wand.and.stars")
                     }
                     .help("Lint fixes")
+                    .accessibilityLabel("Lint fixes")
                     .popover(isPresented: $showingLintFixes) {
                         SkillLintFixesView(
                             fixes: SkillLinter.fixes(for: document.editorContent, skill: skill),
@@ -224,6 +293,7 @@ struct SkillDetailView: View {
                         Image(systemName: "folder")
                     }
                     .help("Show in Finder")
+                    .accessibilityLabel("Show in Finder")
                 }
             }
             if !skill.isReadOnly {
@@ -233,7 +303,8 @@ struct SkillDetailView: View {
                     } label: {
                         Image(systemName: "trash")
                     }
-                    .help("Delete \(skill.displayTypeName)")
+                    .help("Move \(skill.displayTypeName) to Trash")
+                    .accessibilityLabel("Move to Trash")
                 }
                 ToolbarItem {
                     Button {
@@ -243,6 +314,7 @@ struct SkillDetailView: View {
                         Image(systemName: "plus.square.on.square")
                     }
                     .help("Duplicate \(skill.displayTypeName)")
+                    .accessibilityLabel("Duplicate")
                 }
             }
             if skill.canMakeGlobal {
@@ -253,6 +325,7 @@ struct SkillDetailView: View {
                         Image(systemName: "globe")
                     }
                     .help("Make Global")
+                    .accessibilityLabel("Make Global")
                 }
             }
         }
@@ -269,16 +342,16 @@ struct SkillDetailView: View {
                 )
             case .confirmDelete:
                 return Alert(
-                    title: Text("Delete \(skill.displayTypeName)?"),
-                    message: Text("This will permanently delete \"\(skill.name)\" from disk."),
-                    primaryButton: .destructive(Text("Delete")) {
+                    title: Text("Move \"\(skill.name)\" to Trash?"),
+                    message: Text("This will move the \(skill.displayTypeName.lowercased()) to the Trash."),
+                    primaryButton: .destructive(Text("Move to Trash")) {
                         deleteSkill()
                     },
                     secondaryButton: .cancel()
                 )
             case .deleteError(let message):
                 return Alert(
-                    title: Text("Delete Failed"),
+                    title: Text("Move to Trash Failed"),
                     message: Text(message),
                     dismissButton: .default(Text("OK"))
                 )
@@ -296,6 +369,50 @@ struct SkillDetailView: View {
                 )
             }
         }
+    }
+
+    private var readOnlyBar: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "lock.fill")
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+            Text("Read-only — this skill is managed by its plugin.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+            Spacer()
+            Button("Duplicate to Edit") {
+                appState.skillToDuplicate = skill
+                appState.showingDuplicateSkillSheet = true
+            }
+            .controlSize(.small)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(Color(NSColor.controlBackgroundColor))
+    }
+
+    private var externalChangeBar: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+                .accessibilityHidden(true)
+            Text("This file changed on disk.")
+                .font(.callout)
+            Spacer()
+            Button("Reload") {
+                reloadFromDisk()
+            }
+            .controlSize(.small)
+            .help("Discard your unsaved edits and load the version on disk")
+            Button("Keep Mine") {
+                keepLocalEdits()
+            }
+            .controlSize(.small)
+            .help("Keep your edits; the next save overwrites the file on disk")
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(Color.orange.opacity(0.12))
     }
 
     private var composeFloatingButton: some View {
@@ -323,6 +440,11 @@ struct SkillDetailView: View {
         guard !skill.isReadOnly else { return }
         do {
             try skill.deleteFromDisk()
+            // Nothing left to flush: the file is in the Trash and the model is going away.
+            autoSaveTask?.cancel()
+            autoSaveTask = nil
+            loadedSkill = nil
+            showingExternalChangeBar = false
             appState.selectedSkill = nil
             modelContext.delete(skill)
             try modelContext.save()
@@ -331,9 +453,71 @@ struct SkillDetailView: View {
         }
     }
 
-    private func markSkillOpened() {
-        skill.lastOpened = .now
-        try? modelContext.save()
+    // MARK: - Autosave & external changes
+
+    private func scheduleAutosave() {
+        guard !skill.isReadOnly else { return }
+        autoSaveTask?.cancel()
+        autoSaveTask = Task {
+            try? await Task.sleep(for: .seconds(1))
+            // While the "changed on disk" bar is up, hold off so we don't
+            // silently clobber the external edit before the user decides.
+            guard !Task.isCancelled, document.hasUnsavedChanges, !showingExternalChangeBar else { return }
+            document.save(to: skill)
+        }
+    }
+
+    /// Writes pending edits to the skill this document currently represents.
+    /// Called before the document is repointed at another skill or torn down,
+    /// so a selection change within the 1s autosave window never loses work.
+    private func flushPendingSave() {
+        autoSaveTask?.cancel()
+        autoSaveTask = nil
+        guard document.hasUnsavedChanges, let previous = loadedSkill else { return }
+        guard !previous.isDeleted, previous.modelContext != nil, !previous.isReadOnly else { return }
+        // Never resurrect a file that was just trashed or removed by a rescan.
+        guard document.fileExistsOnDisk(for: previous) else { return }
+        // The file changed underneath us and the user hasn't resolved it yet
+        // (or the change landed between the last check and now). Writing here
+        // would silently discard the other editor's version, so keep the buffer
+        // and let the conflict bar handle it when this skill is reopened.
+        guard !showingExternalChangeBar, !document.hasExternalChangeOnDisk(for: previous) else {
+            AppLogger.fileIO.notice("Skipped autosave flush for \(previous.filePath): file changed on disk")
+            return
+        }
+        document.save(to: previous)
+    }
+
+    /// Reacts to the file watcher's rescan updating `skill.fileModifiedDate`.
+    /// Our own saves also bump it, so the on-disk bytes are compared against
+    /// what the document last loaded/saved before treating it as external.
+    private func handleFileModifiedDateChange() {
+        // A selection switch changes the date too; onChange(filePath) owns that case.
+        guard loadedSkill === skill else { return }
+        guard skill.fileModifiedDate != observedModifiedDate else { return }
+        observedModifiedDate = skill.fileModifiedDate
+        guard !skill.isRemote, document.hasExternalChangeOnDisk(for: skill) else { return }
+
+        if document.hasUnsavedChanges {
+            showingExternalChangeBar = true
+        } else {
+            showingExternalChangeBar = false
+            document.load(from: skill)
+        }
+    }
+
+    private func reloadFromDisk() {
+        autoSaveTask?.cancel()
+        autoSaveTask = nil
+        showingExternalChangeBar = false
+        observedModifiedDate = skill.fileModifiedDate
+        document.load(from: skill)
+    }
+
+    private func keepLocalEdits() {
+        showingExternalChangeBar = false
+        // Re-arm the autosave that was held back while the bar was visible.
+        scheduleAutosave()
     }
 
     private func restoreSnapshot(_ snapshot: SkillVersionSnapshot) {
@@ -349,8 +533,14 @@ struct SkillDetailView: View {
     }
 
     private func applyLintFix(_ fix: SkillLintFix) {
+        showingLintFixes = false
+        pendingLintPreview = fix.preview(document.editorContent, skill: skill)
+    }
+
+    private func commitLintFix(_ proposed: String) {
         SkillVersionHistory.recordSnapshot(for: skill, content: document.editorContent, reason: "Before lint fix")
-        document.editorContent = fix.apply(document.editorContent, skill)
+        document.editorContent = proposed
+        pendingLintPreview = nil
     }
 }
 

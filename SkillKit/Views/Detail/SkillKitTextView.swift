@@ -2,6 +2,84 @@ import AppKit
 
 final class SkillKitTextView: NSTextView {
 
+    private var didRegisterFormatObserver = false
+
+    // MARK: - Lifecycle
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard window != nil, !didRegisterFormatObserver else { return }
+        didRegisterFormatObserver = true
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleApplyMarkdownFormat(_:)),
+            name: .applyMarkdownFormat,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleScrollToLine(_:)),
+            name: .scrollEditorToLine,
+            object: nil
+        )
+    }
+
+    /// Scrolls to and selects a 1-based line, used by "Jump to line" on a
+    /// security finding. Only the editable editor responds, so the preview
+    /// pane's copy stays put.
+    @objc private func handleScrollToLine(_ notification: Notification) {
+        guard isEditable, window != nil,
+              let line = notification.userInfo?["line"] as? Int, line > 0 else { return }
+
+        let text = string as NSString
+        var currentLine = 1
+        var lineRange: NSRange?
+        var searchLocation = 0
+
+        while searchLocation <= text.length {
+            let range = text.lineRange(for: NSRange(location: searchLocation, length: 0))
+            if currentLine == line {
+                lineRange = range
+                break
+            }
+            guard NSMaxRange(range) > searchLocation else { break }
+            searchLocation = NSMaxRange(range)
+            currentLine += 1
+        }
+
+        // The buffer can be shorter than the scanned source (unsaved deletions,
+        // or a reconstructed-frontmatter fallback). Do nothing rather than
+        // flashing line 1 as if it were the finding.
+        guard let lineRange else { return }
+        window?.makeFirstResponder(self)
+        setSelectedRange(lineRange)
+        scrollRangeToVisible(lineRange)
+        showFindIndicator(for: lineRange)
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+
+    /// Whether this editor should respond to app-wide formatting commands
+    /// (menu items, notifications). Only the focused, editable editor reacts.
+    private var isFocusedEditableEditor: Bool {
+        guard isEditable, let window else { return false }
+        return window.firstResponder === self
+    }
+
+    /// Handles `.applyMarkdownFormat` posted by the Format menu.
+    /// `object` is "bold", "italic", or "strikethrough".
+    @objc private func handleApplyMarkdownFormat(_ notification: Notification) {
+        guard isFocusedEditableEditor, let format = notification.object as? String else { return }
+        switch format {
+        case "bold": toggleBold(nil)
+        case "italic": toggleItalic(nil)
+        case "strikethrough": toggleStrikethrough(nil)
+        default: break
+        }
+    }
+
     // MARK: - Cursor
 
     override func mouseMoved(with event: NSEvent) {
@@ -41,12 +119,31 @@ final class SkillKitTextView: NSTextView {
     }
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
-        guard event.modifierFlags.contains(.command) else {
+        let modifiers = event.modifierFlags.intersection([.command, .shift, .option, .control])
+        guard modifiers.contains(.command) else {
             return super.performKeyEquivalent(with: event)
         }
-        if event.charactersIgnoringModifiers == "f" {
+        let key = event.charactersIgnoringModifiers?.lowercased() ?? ""
+
+        if modifiers == [.command], key == "f" {
             showFindPanel(nil)
             return true
+        }
+
+        // ⌘B / ⌘I / ⇧⌘X — advertised in the context menu; only for the focused editor.
+        if isFocusedEditableEditor {
+            if modifiers == [.command], key == "b" {
+                toggleBold(nil)
+                return true
+            }
+            if modifiers == [.command], key == "i" {
+                toggleItalic(nil)
+                return true
+            }
+            if modifiers == [.command, .shift], key == "x" {
+                toggleStrikethrough(nil)
+                return true
+            }
         }
         return super.performKeyEquivalent(with: event)
     }
@@ -54,11 +151,11 @@ final class SkillKitTextView: NSTextView {
     // MARK: - Markdown Formatting
 
     @objc func toggleBold(_ sender: Any?) {
-        wrapSelection(prefix: "**", suffix: "**", placeholder: "bold text")
+        toggleInlineMarker("**")
     }
 
     @objc func toggleItalic(_ sender: Any?) {
-        wrapSelection(prefix: "*", suffix: "*", placeholder: "italic text")
+        toggleInlineMarker("*")
     }
 
     @objc func insertLink(_ sender: Any?) {
@@ -95,7 +192,7 @@ final class SkillKitTextView: NSTextView {
     }
 
     @objc func toggleStrikethrough(_ sender: Any?) {
-        wrapSelection(prefix: "~~", suffix: "~~", placeholder: "strikethrough text")
+        toggleInlineMarker("~~")
     }
 
     @objc func toggleBulletList(_ sender: Any?) {
@@ -223,6 +320,57 @@ final class SkillKitTextView: NSTextView {
         let lines = block.components(separatedBy: "\n")
         let result = lines.map { $0.isEmpty ? $0 : "\(prefix)\($0)" }
         insertText(result.joined(separator: "\n"), replacementRange: lineRange)
+    }
+
+    /// Replaces `range` through the undo-aware text-change pipeline so the
+    /// delegate's `textDidChange` fires (which pushes the change into the
+    /// SwiftUI binding and marks the document as having unsaved changes).
+    private func replaceText(in range: NSRange, with replacement: String) {
+        guard shouldChangeText(in: range, replacementString: replacement) else { return }
+        textStorage?.replaceCharacters(in: range, with: replacement)
+        didChangeText()
+    }
+
+    /// Toggles a symmetric inline marker (`**`, `*`, `~~`) around the selection.
+    ///
+    /// - Selection already wrapped (inside or including the markers): unwraps.
+    /// - Non-empty selection: wraps it and keeps the inner text selected.
+    /// - Empty selection: inserts the marker pair and places the caret between them.
+    private func toggleInlineMarker(_ marker: String) {
+        guard isEditable else { return }
+        let text = string as NSString
+        let range = selectedRange()
+        let markerLength = marker.utf16.count
+
+        // Selection includes the markers themselves, e.g. "**bold**".
+        if range.length >= markerLength * 2 {
+            let selected = text.substring(with: range)
+            if selected.hasPrefix(marker), selected.hasSuffix(marker) {
+                let inner = String(selected.dropFirst(marker.count).dropLast(marker.count))
+                replaceText(in: range, with: inner)
+                setSelectedRange(NSRange(location: range.location, length: inner.utf16.count))
+                return
+            }
+        }
+
+        // Markers immediately surround the selection, e.g. "**|bold|**".
+        let before = NSRange(location: range.location - markerLength, length: markerLength)
+        let after = NSRange(location: NSMaxRange(range), length: markerLength)
+        if before.location >= 0,
+           NSMaxRange(after) <= text.length,
+           text.substring(with: before) == marker,
+           text.substring(with: after) == marker {
+            let outer = NSRange(location: before.location, length: range.length + markerLength * 2)
+            let inner = text.substring(with: range)
+            replaceText(in: outer, with: inner)
+            setSelectedRange(NSRange(location: before.location, length: inner.utf16.count))
+            return
+        }
+
+        // Wrap.
+        let selected = text.substring(with: range)
+        replaceText(in: range, with: marker + selected + marker)
+        setSelectedRange(NSRange(location: range.location + markerLength, length: range.length))
     }
 
     private func wrapSelection(prefix: String, suffix: String, placeholder: String) {

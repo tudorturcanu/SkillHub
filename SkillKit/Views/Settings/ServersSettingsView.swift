@@ -9,15 +9,20 @@ struct ServersSettingsView: View {
     @State private var serverPendingDeletion: RemoteServer?
     @State private var showingEditor = false
     @State private var testingIDs: Set<String> = []
-    @State private var statusMessages: [String: String] = [:]
+    @State private var statusMessages: [String: ConnectionStatus] = [:]
     @State private var managementError: String?
+
+    enum ConnectionStatus: Equatable {
+        case success
+        case failure(String)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Remote Servers")
                 .font(.headline)
 
-            Text("Add SSH servers whose SKILL.md files you want SkillKit to sync. Authentication uses your selected key or SSH agent.")
+            Text("Add SSH servers whose SKILL.md files you want SkillKit to sync. Authentication uses your selected key or SSH agent — SkillKit can't prompt for passwords.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
@@ -85,9 +90,10 @@ struct ServersSettingsView: View {
     }
 
     private func serverRow(_ server: RemoteServer) -> some View {
-        HStack(spacing: 10) {
+        HStack(alignment: .top, spacing: 10) {
             Image(systemName: "server.rack")
                 .foregroundStyle(.secondary)
+                .padding(.top, 2)
             VStack(alignment: .leading, spacing: 3) {
                 Text(server.label).font(.body.weight(.semibold))
                 Text("\(server.username)@\(server.host):\(server.port) · \(server.skillsBasePath)")
@@ -95,11 +101,13 @@ struct ServersSettingsView: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
+
+                // Prefer a fresh test result; otherwise surface the error persisted by the
+                // last sync so users see it without having to press Test.
                 if let status = statusMessages[server.id] {
-                    Text(status)
-                        .font(.caption2)
-                        .foregroundStyle(status == "Connection successful" ? .green : .red)
-                        .lineLimit(2)
+                    statusView(status)
+                } else if let syncError = server.lastSyncError {
+                    statusView(.failure(syncError), origin: "Last sync failed")
                 }
             }
             Spacer()
@@ -115,6 +123,8 @@ struct ServersSettingsView: View {
             .buttonStyle(.plain)
             .disabled(testingIDs.contains(server.id))
             .help("Test SSH connection")
+            .accessibilityLabel("Test connection to \(server.label)")
+            .accessibilityValue(testingIDs.contains(server.id) ? "Testing" : "")
             Button {
                 editingServer = server
                 showingEditor = true
@@ -123,6 +133,7 @@ struct ServersSettingsView: View {
             }
             .buttonStyle(.plain)
             .help("Edit server")
+            .accessibilityLabel("Edit \(server.label)")
             Button(role: .destructive) {
                 serverPendingDeletion = server
             } label: {
@@ -130,8 +141,50 @@ struct ServersSettingsView: View {
             }
             .buttonStyle(.plain)
             .help("Remove server")
+            .accessibilityLabel("Remove \(server.label)")
         }
         .padding(12)
+    }
+
+    @ViewBuilder
+    private func statusView(_ status: ConnectionStatus, origin: String? = nil) -> some View {
+        switch status {
+        case .success:
+            Label("Connection successful", systemImage: "checkmark.circle.fill")
+                .font(.caption2)
+                .foregroundStyle(.green)
+        case .failure(let raw):
+            VStack(alignment: .leading, spacing: 4) {
+                if SSHService.isAuthenticationFailure(raw) {
+                    Label {
+                        Text((origin.map { "\($0): " } ?? "") + "Authentication failed")
+                    } icon: {
+                        Image(systemName: "key.slash")
+                    }
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.red)
+                    Text(SSHService.authenticationGuidance)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    DisclosureGroup("Show raw error") {
+                        Text(raw)
+                            .font(.caption2.monospaced())
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.top, 2)
+                    }
+                    .font(.caption2)
+                } else {
+                    Text((origin.map { "\($0): " } ?? "") + raw)
+                        .font(.caption2)
+                        .foregroundStyle(.red)
+                        .lineLimit(3)
+                        .textSelection(.enabled)
+                }
+            }
+        }
     }
 
     private func test(_ server: RemoteServer) {
@@ -140,9 +193,9 @@ struct ServersSettingsView: View {
         Task {
             do {
                 try await SSHService.testConnection(server)
-                statusMessages[server.id] = "Connection successful"
+                statusMessages[server.id] = .success
             } catch {
-                statusMessages[server.id] = error.localizedDescription
+                statusMessages[server.id] = .failure(error.localizedDescription)
             }
             testingIDs.remove(server.id)
         }
@@ -174,6 +227,10 @@ private struct ServerEditorSheet: View {
                 TextField("Port", value: $port, format: .number)
                 TextField("Skills directory", text: $skillsBasePath)
                 TextField("SSH key path (optional)", text: $sshKeyPath)
+                Text("Only key-file or ssh-agent authentication is supported; SkillKit can't enter passwords or passphrases. Leave blank to use your default key or agent.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             .formStyle(.grouped)
             if let errorMessage {

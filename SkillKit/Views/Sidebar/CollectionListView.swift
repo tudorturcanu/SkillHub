@@ -1,6 +1,22 @@
 import SwiftUI
 import SwiftData
 
+/// Snapshot of a collection the user asked to delete. Captured up front so the
+/// alert never reads from a model that may already be gone.
+private struct PendingCollectionDeletion: Identifiable {
+    let id: PersistentIdentifier
+    let name: String
+    let itemCount: Int
+
+    var itemCountText: String {
+        switch itemCount {
+        case 0: "It's empty."
+        case 1: "It contains 1 item."
+        default: "It contains \(itemCount) items."
+        }
+    }
+}
+
 struct CollectionListView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(AppState.self) private var appState
@@ -11,7 +27,21 @@ struct CollectionListView: View {
     @State private var editingCollectionID: PersistentIdentifier?
     @State private var editingName = ""
     @State private var errorMessage: String?
+    @State private var pendingDeletion: PendingCollectionDeletion?
     @FocusState private var isRenameFocused: Bool
+
+    private func deleteCollection(_ pending: PendingCollectionDeletion) {
+        guard let collection = collections.first(where: { $0.persistentModelID == pending.id }) else { return }
+        modelContext.delete(collection)
+        do {
+            try modelContext.save()
+            if appState.sidebarFilter == .collection(pending.name) {
+                appState.sidebarFilter = .allSkills
+            }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
 
     private func normalizedName(_ name: String) -> String {
         name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -135,9 +165,12 @@ struct CollectionListView: View {
                             editingCollectionID = collection.persistentModelID
                         }
                         Divider()
-                        Button("Delete", role: .destructive) {
-                            modelContext.delete(collection)
-                            try? modelContext.save()
+                        Button("Delete…", role: .destructive) {
+                            pendingDeletion = PendingCollectionDeletion(
+                                id: collection.persistentModelID,
+                                name: collection.name,
+                                itemCount: collection.skills.count
+                            )
                         }
                     }
             }
@@ -203,6 +236,21 @@ struct CollectionListView: View {
             Button("OK") {}
         } message: {
             Text(errorMessage ?? "")
+        }
+        .alert(
+            "Delete \"\(pendingDeletion?.name ?? "")\"?",
+            isPresented: Binding(
+                get: { pendingDeletion != nil },
+                set: { if !$0 { pendingDeletion = nil } }
+            ),
+            presenting: pendingDeletion
+        ) { pending in
+            Button("Delete", role: .destructive) {
+                deleteCollection(pending)
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: { pending in
+            Text("\(pending.itemCountText) The skills and rules themselves are not removed.")
         }
     }
 }

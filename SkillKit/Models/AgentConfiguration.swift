@@ -59,6 +59,60 @@ final class AgentConfiguration {
     var enabledAgents: [AgentID] { supported.filter { enabledIds.contains($0) } }
     var hasAnyEnabled: Bool { !enabledIds.isEmpty }
 
+    // MARK: - Binary detection
+
+    /// Where each agent's binary was found. Seeded synchronously from the override and
+    /// fixed probe list, then refreshed once the login shell has reported its PATH.
+    private(set) var detected: [AgentID: AgentBinaryResolver.Resolution] = [:]
+    /// False until the first login-shell-backed detection pass has finished.
+    private(set) var detectionComplete = false
+    private var detectionTask: Task<Void, Never>?
+
+    func binaryURL(for id: AgentID) -> URL? { detected[id]?.url }
+    func binaryResolution(for id: AgentID) -> AgentBinaryResolver.Resolution? { detected[id] }
+    func isDetected(_ id: AgentID) -> Bool { detected[id] != nil }
+
+    /// User-chosen binary path for `id`, if any (even if it no longer exists on disk).
+    func overridePath(for id: AgentID) -> String? {
+        AgentBinaryResolver.shared.overridePath(for: id)
+    }
+
+    /// Sets (or clears with `nil`) the user-chosen binary and re-runs detection.
+    func setOverride(_ url: URL?, for id: AgentID) {
+        AgentBinaryResolver.shared.setOverride(url, for: id)
+        refreshDetectionSync()
+        Task { await refreshDetection() }
+    }
+
+    /// Cheap synchronous pass — no shell is spawned.
+    func refreshDetectionSync() {
+        var result: [AgentID: AgentBinaryResolver.Resolution] = [:]
+        for id in supported {
+            if let res = id.toolSource.cliBinaryResolution { result[id] = res }
+        }
+        detected = result
+    }
+
+    /// Full pass that also queries the login shell (once per process). Coalesces
+    /// concurrent callers.
+    func refreshDetection() async {
+        if let task = detectionTask {
+            await task.value
+            return
+        }
+        let task = Task { @MainActor in
+            var result: [AgentID: AgentBinaryResolver.Resolution] = [:]
+            for id in supported {
+                if let res = await id.toolSource.resolveCLIBinary() { result[id] = res }
+            }
+            detected = result
+            detectionComplete = true
+        }
+        detectionTask = task
+        await task.value
+        detectionTask = nil
+    }
+
     private init() {
         let defaults = UserDefaults.standard
         // Treat "key has never been written" as first run. We do NOT use empty-array as a
@@ -86,6 +140,19 @@ final class AgentConfiguration {
             }
             self.enabledIds = initial
             defaults.set(initial.map(\.rawValue), forKey: Self.enabledIdsKey)
+        }
+
+        refreshDetectionSync()
+        // Ask the login shell for its PATH in the background so fnm/mise/volta/bun users
+        // see their agent as installed without a manual override.
+        Task { [weak self] in
+            await self?.refreshDetection()
+            guard let self, !hasStoredValue else { return }
+            // First run: if the login shell revealed a binary the fixed probes missed,
+            // enable that agent too.
+            for id in self.supported where self.detected[id] != nil && !self.enabledIds.contains(id) {
+                self.enabledIds.insert(id)
+            }
         }
     }
 

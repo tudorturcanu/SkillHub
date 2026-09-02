@@ -3,8 +3,47 @@ import Foundation
 import OSLog
 import SwiftData
 
+/// Result of a diagnostic export attempt. Callers that don't need it can ignore the return
+/// value — `export` already presents an alert for the success and failure cases.
+enum DiagnosticExportOutcome: Equatable {
+    case success(URL)
+    case failure(String)
+    case cancelled
+}
+
 enum DiagnosticExporter {
-    static func export(modelContext: ModelContext) {
+    /// Builds the report, asks where to save it, writes it, and shows an alert describing
+    /// the outcome. Must be called on the main thread (it runs a modal save panel).
+    @discardableResult
+    @MainActor
+    static func export(modelContext: ModelContext) -> DiagnosticExportOutcome {
+        let report = buildReport(modelContext: modelContext)
+
+        // Save panel
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "skillkit-diagnostic-\(dateStamp()).txt"
+        panel.allowedContentTypes = [.plainText]
+
+        guard panel.runModal() == .OK, let url = panel.url else {
+            return .cancelled
+        }
+
+        let outcome: DiagnosticExportOutcome
+        do {
+            try report.write(to: url, atomically: true, encoding: .utf8)
+            outcome = .success(url)
+        } catch {
+            AppLogger.fileIO.error("Diagnostic export failed: \(error.localizedDescription)")
+            outcome = .failure(error.localizedDescription)
+        }
+
+        presentAlert(for: outcome)
+        return outcome
+    }
+
+    /// Assembles the report text without any UI. Exposed for callers that want to save or
+    /// display it themselves.
+    static func buildReport(modelContext: ModelContext) -> String {
         var lines: [String] = []
 
         // System info
@@ -38,6 +77,12 @@ enum DiagnosticExporter {
         }
         lines.append("")
 
+        // Library settings
+        lines.append("## Library")
+        lines.append("- Root: \(SkillKitSettings.sotDir)\(SkillKitSettings.isUsingDefaultSotDir ? " (default)" : "")")
+        lines.append("- Include plugin-installed skills: \(SkillKitSettings.includePluginSkills ? "yes" : "no")")
+        lines.append("")
+
         // Custom scan paths
         let customPaths = UserDefaults.standard.stringArray(forKey: "customScanPaths") ?? []
         lines.append("## Custom Scan Paths")
@@ -58,15 +103,30 @@ enum DiagnosticExporter {
             lines.append("(Unable to collect logs)")
         }
 
-        let report = lines.joined(separator: "\n")
+        return lines.joined(separator: "\n")
+    }
 
-        // Save panel
-        let panel = NSSavePanel()
-        panel.nameFieldStringValue = "skillkit-diagnostic-\(dateStamp()).txt"
-        panel.allowedContentTypes = [.plainText]
-
-        if panel.runModal() == .OK, let url = panel.url {
-            try? report.write(to: url, atomically: true, encoding: .utf8)
+    @MainActor
+    private static func presentAlert(for outcome: DiagnosticExportOutcome) {
+        let alert = NSAlert()
+        switch outcome {
+        case .success(let url):
+            alert.alertStyle = .informational
+            alert.messageText = "Diagnostic Report Saved"
+            alert.informativeText = "Saved to \(url.path)"
+            alert.addButton(withTitle: "OK")
+            alert.addButton(withTitle: "Reveal in Finder")
+            if alert.runModal() == .alertSecondButtonReturn {
+                NSWorkspace.shared.activateFileViewerSelecting([url])
+            }
+        case .failure(let message):
+            alert.alertStyle = .warning
+            alert.messageText = "Couldn't Save Diagnostic Report"
+            alert.informativeText = message
+            alert.addButton(withTitle: "OK")
+            alert.runModal()
+        case .cancelled:
+            break
         }
     }
 

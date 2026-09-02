@@ -186,120 +186,178 @@ enum ToolSource: String, Codable, CaseIterable, Identifiable {
         cliBinaryURL(name) != nil
     }
 
-    /// Resolves an executable name to an absolute file URL by probing standard install locations
-    /// and active nvm node versions. Returns nil if not found.
+    /// Resolves an executable name to an absolute file URL. Consults the user's login-shell
+    /// PATH when it has already been captured (see `AgentBinaryResolver`), then probes the
+    /// standard install locations and active nvm node versions. Never blocks on a shell.
+    /// Returns nil if not found.
     static func cliBinaryURL(_ name: String, extraPaths: [String] = []) -> URL? {
-        let fm = FileManager.default
+        AgentBinaryResolver.shared.resolveCached(name: name, agentId: nil, extraPaths: extraPaths)?.url
+    }
+
+    /// Extra, tool-specific locations to probe for the CLI binary.
+    private var cliExtraProbePaths: [String] {
         let home = AppPaths.userHomeDirectory
-        var paths = extraPaths
-        paths.append(contentsOf: [
-            "\(home)/.local/bin/\(name)",
-            "/opt/homebrew/bin/\(name)",
-            "/usr/local/bin/\(name)",
-        ])
-        for path in paths where fm.isExecutableFile(atPath: path) {
-            return URL(fileURLWithPath: path)
+        switch self {
+        case .codex: return ["\(home)/.codex/bin/codex"]
+        default: return []
         }
-        let nvmDir = "\(home)/.nvm/versions/node"
-        if let nodeDirs = try? fm.contentsOfDirectory(atPath: nvmDir) {
-            for nodeDir in nodeDirs.sorted().reversed() {
-                let candidate = "\(nvmDir)/\(nodeDir)/bin/\(name)"
-                if fm.isExecutableFile(atPath: candidate) {
-                    return URL(fileURLWithPath: candidate)
-                }
-            }
+    }
+
+    /// Name of the CLI executable for tools that can be driven directly via subprocess.
+    var cliBinaryName: String? {
+        switch self {
+        case .claude: "claude"
+        case .codex: "codex"
+        default: nil
         }
-        return nil
+    }
+
+    /// The `AgentID` whose user-chosen binary override applies to this tool, if any.
+    private var cliAgentID: AgentID? {
+        switch self {
+        case .claude: .claude
+        case .codex: .codex
+        default: nil
+        }
     }
 
     /// Resolved binary URL for tools that can be driven directly via subprocess.
-    /// Currently used by Claude and Codex transports.
+    /// Currently used by Claude and Codex transports. Non-blocking: uses the user's
+    /// override, the cached login-shell PATH, then the fixed probe list. Call
+    /// `resolveCLIBinaryURL()` to also query the login shell when it hasn't run yet.
     var cliBinaryURL: URL? {
-        let home = AppPaths.userHomeDirectory
-        switch self {
-        case .claude:
-            return Self.cliBinaryURL("claude")
-        case .codex:
-            return Self.cliBinaryURL("codex", extraPaths: ["\(home)/.codex/bin/codex"])
-        default:
-            return nil
-        }
+        cliBinaryResolution?.url
     }
 
-    /// Prepares a environment dictionary with a populated PATH variable containing common
-    /// terminal search paths (Homebrew, nvm, local node, etc.) so subprocesses can locate Node.
-    static func envWithResolvedPATH() -> [String: String] {
+    /// Like `cliBinaryURL` but also reports where the binary came from.
+    var cliBinaryResolution: AgentBinaryResolver.Resolution? {
+        guard let name = cliBinaryName else { return nil }
+        return AgentBinaryResolver.shared.resolveCached(name: name, agentId: cliAgentID, extraPaths: cliExtraProbePaths)
+    }
+
+    /// Full async resolution (override → login-shell PATH → probes). Spawns the user's
+    /// login shell at most once per process.
+    func resolveCLIBinary() async -> AgentBinaryResolver.Resolution? {
+        guard let name = cliBinaryName else { return nil }
+        return await AgentBinaryResolver.shared.resolve(name: name, agentId: cliAgentID, extraPaths: cliExtraProbePaths)
+    }
+
+    func resolveCLIBinaryURL() async -> URL? {
+        await resolveCLIBinary()?.url
+    }
+
+    /// Prepares an environment dictionary whose PATH contains the same directories the
+    /// binary was resolved from (login-shell PATH, override dir) plus the common terminal
+    /// search paths (Homebrew, nvm, local node, etc.) so subprocesses can locate Node.
+    static func envWithResolvedPATH(for agentId: AgentID? = nil) -> [String: String] {
         var env = ProcessInfo.processInfo.environment
-        let home = AppPaths.userHomeDirectory
-        
-        var pathComponents = (env["PATH"] ?? "").components(separatedBy: ":").filter { !$0.isEmpty }
-        
-        // Add common locations where node / Homebrew / nvm reside
-        let searchPaths = [
-            "\(home)/.local/bin",
-            "/opt/homebrew/bin",
-            "/usr/local/bin",
-            "/usr/bin",
-            "/bin",
-            "/usr/sbin",
-            "/sbin"
-        ]
-        
-        for path in searchPaths {
-            if !pathComponents.contains(path) {
-                pathComponents.append(path)
+        var pathComponents = AgentBinaryResolver.shared.launchPATHComponents(for: agentId)
+        for existing in (env["PATH"] ?? "").components(separatedBy: ":") where !existing.isEmpty {
+            if !pathComponents.contains(existing) {
+                pathComponents.append(existing)
             }
         }
-        
-        // Also look for nvm versions to add to the PATH
-        let fm = FileManager.default
-        let nvmDir = "\(home)/.nvm/versions/node"
-        if let nodeDirs = try? fm.contentsOfDirectory(atPath: nvmDir) {
-            for nodeDir in nodeDirs.sorted().reversed() {
-                let binDir = "\(nvmDir)/\(nodeDir)/bin"
-                var isDir: ObjCBool = false
-                if fm.fileExists(atPath: binDir, isDirectory: &isDir), isDir.boolValue {
-                    if !pathComponents.contains(binDir) {
-                        pathComponents.append(binDir)
-                    }
-                }
-            }
-        }
-        
         env["PATH"] = pathComponents.joined(separator: ":")
         return env
     }
 
     /// Runs `<bin> --version` and parses semver. Returns nil if the binary is missing
-    /// or the output doesn't match an expected pattern.
-    func cliVersion() async -> (major: Int, minor: Int, patch: Int)? {
-        guard let url = cliBinaryURL else { return nil }
-        return await Task.detached(priority: .userInitiated) { () -> (Int, Int, Int)? in
-            let proc = Process()
-            proc.executableURL = url
-            proc.environment = Self.envWithResolvedPATH()
-            proc.arguments = ["--version"]
-            let pipe = Pipe()
-            proc.standardOutput = pipe
-            proc.standardError = FileHandle.nullDevice
-            do {
-                try proc.run()
-                proc.waitUntilExit()
-            } catch {
-                return nil
+    /// or the output doesn't match an expected pattern. Pass `binary` to check a specific
+    /// executable (e.g. one just resolved via `resolveCLIBinaryURL()`).
+    func cliVersion(binary: URL? = nil) async -> (major: Int, minor: Int, patch: Int)? {
+        guard let url = binary ?? cliBinaryURL else { return nil }
+        let env = Self.envWithResolvedPATH(for: cliAgentID)
+        // Run the blocking probe on a dedicated queue rather than the cooperative pool,
+        // so a wedged CLI can't hold one of Swift concurrency's worker threads for 10s.
+        let raw: String? = await withCheckedContinuation { continuation in
+            Self.processQueue.async {
+                continuation.resume(
+                    returning: Self.captureStdout(of: url, arguments: ["--version"], environment: env, timeout: 10)
+                )
             }
-            guard proc.terminationStatus == 0 else { return nil }
-            let data = (try? pipe.fileHandleForReading.readToEnd()) ?? Data()
-            try? pipe.fileHandleForReading.close()
-            guard let raw = String(data: data, encoding: .utf8) else { return nil }
-            let pattern = #/(\d+)\.(\d+)\.(\d+)/#
-            guard let match = raw.firstMatch(of: pattern),
-                  let major = Int(match.output.1),
-                  let minor = Int(match.output.2),
-                  let patch = Int(match.output.3) else {
-                return nil
+        }
+        guard let raw else { return nil }
+        let pattern = #/(\d+)\.(\d+)\.(\d+)/#
+        guard let match = raw.firstMatch(of: pattern),
+              let major = Int(match.output.1),
+              let minor = Int(match.output.2),
+              let patch = Int(match.output.3) else {
+            return nil
+        }
+        return (major, minor, patch)
+    }
+
+    /// Where the blocking `captureStdout` waits live when called from async code.
+    private static let processQueue = DispatchQueue(
+        label: "alice.turcanu.com.SkillKit.ToolSource.process",
+        qos: .userInitiated,
+        attributes: .concurrent
+    )
+
+    /// Async wrapper around `captureStdout` that waits on `processQueue` rather
+    /// than occupying a Swift concurrency cooperative thread for the timeout.
+    nonisolated static func captureStdoutAsync(
+        of url: URL,
+        arguments: [String],
+        environment: [String: String],
+        timeout: TimeInterval
+    ) async -> String? {
+        await withCheckedContinuation { continuation in
+            processQueue.async {
+                continuation.resume(
+                    returning: captureStdout(
+                        of: url,
+                        arguments: arguments,
+                        environment: environment,
+                        timeout: timeout
+                    )
+                )
             }
-            return (major, minor, patch)
-        }.value
+        }
+    }
+
+    /// Runs `url arguments` and returns its stdout, or nil on launch failure, non-zero exit
+    /// or timeout. Blocking — call off the main thread. Reads concurrently and bounds the
+    /// wait so a wedged CLI can't hang the caller.
+    nonisolated static func captureStdout(
+        of url: URL,
+        arguments: [String],
+        environment: [String: String],
+        timeout: TimeInterval
+    ) -> String? {
+        let proc = Process()
+        proc.executableURL = url
+        proc.arguments = arguments
+        proc.environment = environment
+        proc.standardInput = FileHandle.nullDevice
+        proc.standardError = FileHandle.nullDevice
+        let pipe = Pipe()
+        proc.standardOutput = pipe
+
+        // Wait on the termination handler rather than polling `isRunning`. Installed
+        // before `run()` so a process that exits immediately still signals us.
+        let exited = DispatchSemaphore(value: 0)
+        proc.terminationHandler = { _ in exited.signal() }
+
+        do {
+            try proc.run()
+        } catch {
+            return nil
+        }
+        let readDone = DispatchSemaphore(value: 0)
+        var data = Data()
+        DispatchQueue.global(qos: .userInitiated).async {
+            data = pipe.fileHandleForReading.readDataToEndOfFile()
+            readDone.signal()
+        }
+        if exited.wait(timeout: .now() + timeout) == .timedOut {
+            proc.terminate()
+            // The reader may still be appending to `data`; reading it here would race.
+            return nil
+        }
+        // `data` is only safe to read once the reader has handed it over.
+        guard readDone.wait(timeout: .now() + 1) == .success else { return nil }
+        guard proc.terminationStatus == 0 else { return nil }
+        return String(data: data, encoding: .utf8)
     }
 }

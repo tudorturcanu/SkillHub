@@ -6,7 +6,6 @@ final class AppState {
     var selectedSkill: Skill?
     var searchText: String = ""
     var showingNewSkillSheet: Bool = false
-    var showingRegistrySheet: Bool = false
     var showingDuplicateSkillSheet: Bool = false
     var skillToDuplicate: Skill? = nil
     var newItemKind: ItemKind = .skill
@@ -17,6 +16,33 @@ final class AppState {
     var skillSortOption: SkillSortOption = .nameAscending
     var skillSearchScope: SkillSearchScope = .all
     var recentSearches: [RecentSkillSearch] = RecentSkillSearchStore.load()
+
+    // MARK: - Session restoration
+
+    private static let lastFilterKey = "lastSidebarFilter"
+    private static let lastSkillPathKey = "lastSelectedSkillPath"
+
+    /// Persists the current filter and selection so the next launch can restore them.
+    func persistSession() {
+        let defaults = UserDefaults.standard
+        defaults.set(sidebarFilter.persistedValue, forKey: Self.lastFilterKey)
+        if let path = selectedSkill?.filePath {
+            defaults.set(path, forKey: Self.lastSkillPathKey)
+        } else {
+            defaults.removeObject(forKey: Self.lastSkillPathKey)
+        }
+    }
+
+    /// The filter saved by the previous session, if any.
+    static var persistedFilter: SidebarFilter? {
+        guard let raw = UserDefaults.standard.string(forKey: lastFilterKey) else { return nil }
+        return SidebarFilter(persistedValue: raw)
+    }
+
+    /// The selected skill path saved by the previous session, if any.
+    static var persistedSkillPath: String? {
+        UserDefaults.standard.string(forKey: lastSkillPathKey)
+    }
 
     func rememberCurrentSearch() {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -53,6 +79,52 @@ enum SidebarFilter: Hashable {
     case customPlatform(id: String)
     case collection(String)
     case server(String)
+}
+
+extension SidebarFilter {
+    /// Stable string form used to restore the sidebar selection across launches.
+    var persistedValue: String {
+        switch self {
+        case .dashboard: "dashboard"
+        case .discover: "discover"
+        case .recent: "recent"
+        case .allSkills: "allSkills"
+        case .allRules: "allRules"
+        case .needsReview: "needsReview"
+        case .securityReview: "securityReview"
+        case .favorites: "favorites"
+        case .tool(let tool): "tool:\(tool.rawValue)"
+        case .customPlatform(let id): "customPlatform:\(id)"
+        case .collection(let name): "collection:\(name)"
+        case .server(let id): "server:\(id)"
+        }
+    }
+
+    init?(persistedValue: String) {
+        switch persistedValue {
+        case "dashboard": self = .dashboard
+        case "discover": self = .discover
+        case "recent": self = .recent
+        case "allSkills": self = .allSkills
+        case "allRules": self = .allRules
+        case "needsReview": self = .needsReview
+        case "securityReview": self = .securityReview
+        case "favorites": self = .favorites
+        default:
+            guard let separator = persistedValue.firstIndex(of: ":") else { return nil }
+            let kind = persistedValue[..<separator]
+            let payload = String(persistedValue[persistedValue.index(after: separator)...])
+            switch kind {
+            case "tool":
+                guard let tool = ToolSource(rawValue: payload) else { return nil }
+                self = .tool(tool)
+            case "customPlatform": self = .customPlatform(id: payload)
+            case "collection": self = .collection(payload)
+            case "server": self = .server(payload)
+            default: return nil
+            }
+        }
+    }
 }
 
 enum SkillQuickFilter: String, CaseIterable, Identifiable {

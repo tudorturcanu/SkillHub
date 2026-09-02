@@ -28,8 +28,21 @@ struct PromptPlaygroundView: View {
             scanVariables()
             prefillContextValues()
         }
+        .onChange(of: skill.filePath) {
+            // A different skill: drop the previous one's values entirely.
+            variables = [:]
+            scanVariables()
+            prefillContextValues()
+        }
         .onChange(of: promptTemplate) {
             scanVariables()
+        }
+        .onChange(of: detectedVariableNames) { _, names in
+            // Template edited: prefill variables that just appeared and drop
+            // ones that no longer exist, without clobbering what the user typed.
+            prefillContextValues(onlyMissing: true)
+            let live = Set(names)
+            variables = variables.filter { live.contains($0.key) }
         }
     }
     
@@ -215,35 +228,32 @@ struct PromptPlaygroundView: View {
             
             Spacer()
             
-            // Token Estimates
-            HStack(spacing: 12) {
-                tokenEstimateChip(label: "Claude Tokens", tokens: claudeTokenEstimate, color: .orange)
-                tokenEstimateChip(label: "GPT Tokens", tokens: gptTokenEstimate, color: .blue)
-            }
+            // Token estimate (one rough number — real tokenizers vary per vendor)
+            tokenEstimateChip(tokens: TokenEstimator.estimate(renderedContent))
         }
         .font(.caption)
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
         .background(Color(NSColor.windowBackgroundColor))
     }
-    
-    private func tokenEstimateChip(label: String, tokens: Int, color: Color) -> some View {
+
+    private func tokenEstimateChip(tokens: Int) -> some View {
         HStack(spacing: 4) {
-            Circle()
-                .fill(color)
-                .frame(width: 6, height: 6)
-            Text(label)
+            Image(systemName: "number")
                 .foregroundStyle(.secondary)
             Text("~\(tokens)")
                 .bold()
+            Text("tokens (estimate)")
+                .foregroundStyle(.secondary)
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
-        .background(color.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
+        .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
         .overlay(
             RoundedRectangle(cornerRadius: 6)
-                .stroke(color.opacity(0.15), lineWidth: 1)
+                .stroke(Color.secondary.opacity(0.15), lineWidth: 1)
         )
+        .help(TokenEstimator.helpText)
     }
     
     // MARK: - Helpers & Parsing
@@ -273,8 +283,11 @@ struct PromptPlaygroundView: View {
         self.detectedVariableNames = Array(vars).sorted()
     }
     
-    private func prefillContextValues() {
+    /// - Parameter onlyMissing: leave variables the user already has a value
+    ///   for alone and fill just the newly detected ones.
+    private func prefillContextValues(onlyMissing: Bool = false) {
         for name in detectedVariableNames {
+            if onlyMissing, let existing = variables[name], !existing.isEmpty { continue }
             variables[name] = contextValue(for: name)
         }
     }
@@ -335,14 +348,6 @@ struct PromptPlaygroundView: View {
     
     private var wordCount: Int {
         renderedContent.split { $0.isWhitespace || $0.isNewline }.count
-    }
-    
-    private var claudeTokenEstimate: Int {
-        max(1, Int(Double(renderedContent.count) / 4.1))
-    }
-    
-    private var gptTokenEstimate: Int {
-        max(1, Int(Double(renderedContent.count) / 4.0))
     }
     
     private func copyToClipboard() {

@@ -263,24 +263,58 @@ extension Skill {
         isGlobal = true
     }
 
+    /// Moves every on-disk location of this item to the Trash.
+    ///
+    /// Symlinked installs are handled first so they are still resolvable when
+    /// examined; the canonical file or directory goes last. A symlink that
+    /// cannot be trashed (e.g. on a volume without a Trash) is simply unlinked,
+    /// since the link itself carries no user data.
     func deleteFromDisk() throws {
         let fm = FileManager.default
 
-        for path in deletionTargets {
+        // Symlinks first, then real items, so trashing the canonical directory
+        // never turns a not-yet-processed link into a dangling one.
+        let targets = deletionTargets.sorted { lhs, rhs in
+            let lhsLink = Self.isSymbolicLink(atPath: lhs)
+            let rhsLink = Self.isSymbolicLink(atPath: rhs)
+            if lhsLink != rhsLink { return lhsLink }
+            return lhs < rhs
+        }
+
+        for path in targets {
             try SandboxBookmarkManager.resolveAndAccessParent(for: path) { url in
-                guard fm.fileExists(atPath: url.path) else { return }
+                guard Self.itemExists(atPath: url.path) else { return }
                 guard fm.isDeletableFile(atPath: url.path) else {
                     throw SkillDeletionError.notDeletable(path)
                 }
             }
         }
 
-        for path in deletionTargets {
+        for path in targets {
             try SandboxBookmarkManager.resolveAndAccessParent(for: path) { url in
-                guard fm.fileExists(atPath: url.path) else { return }
-                try fm.removeItem(atPath: url.path)
+                guard Self.itemExists(atPath: url.path) else { return }
+                do {
+                    try fm.trashItem(at: url, resultingItemURL: nil)
+                } catch {
+                    if Self.isSymbolicLink(atPath: url.path) {
+                        try fm.removeItem(at: url)
+                    } else {
+                        throw SkillDeletionError.trashFailed(path, error)
+                    }
+                }
             }
         }
+    }
+
+    /// `fileExists(atPath:)` follows symlinks and reports a dangling link as
+    /// missing; this checks the link entry itself.
+    private static func itemExists(atPath path: String) -> Bool {
+        (try? FileManager.default.attributesOfItem(atPath: path)) != nil
+    }
+
+    private static func isSymbolicLink(atPath path: String) -> Bool {
+        let attrs = try? FileManager.default.attributesOfItem(atPath: path)
+        return (attrs?[.type] as? FileAttributeType) == .typeSymbolicLink
     }
 }
 
@@ -297,12 +331,16 @@ enum MakeGlobalError: LocalizedError {
 
 enum SkillDeletionError: LocalizedError {
     case notDeletable(String)
+    case trashFailed(String, Error)
 
     var errorDescription: String? {
         switch self {
         case .notDeletable(let path):
             let displayPath = path.replacingOccurrences(of: AppPaths.userHomeDirectory, with: "~")
-            return "Couldn't delete \(displayPath). Check permissions and try again."
+            return "Couldn't move \(displayPath) to the Trash. Check permissions and try again."
+        case .trashFailed(let path, let underlying):
+            let displayPath = path.replacingOccurrences(of: AppPaths.userHomeDirectory, with: "~")
+            return "Couldn't move \(displayPath) to the Trash: \(underlying.localizedDescription)"
         }
     }
 }

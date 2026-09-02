@@ -122,7 +122,9 @@ struct SidebarView: View {
 
                             Spacer()
 
-                            if let error = serverErrors[server.id] {
+                            // Prefer the in-memory error from a sync started here, but fall back to the
+                            // persisted one so failures from the launch-time sync surface immediately.
+                            if let error = serverErrors[server.id] ?? server.lastSyncError {
                                 Button("Show sync error", systemImage: "exclamationmark.triangle.fill") {
                                     showingErrorForServer = server.id
                                 }
@@ -130,15 +132,15 @@ struct SidebarView: View {
                                 .buttonStyle(.plain)
                                 .font(.caption)
                                 .foregroundStyle(.red)
-                                    .popover(isPresented: Binding(
-                                        get: { showingErrorForServer == server.id },
-                                        set: { if !$0 { showingErrorForServer = nil } }
-                                    )) {
-                                        Text(error)
-                                            .font(.caption)
-                                            .padding()
-                                            .frame(maxWidth: 250)
-                                    }
+                                .help(error)
+                                .accessibilityLabel("Sync error for \(server.label)")
+                                .accessibilityValue(error)
+                                .popover(isPresented: Binding(
+                                    get: { showingErrorForServer == server.id },
+                                    set: { if !$0 { showingErrorForServer = nil } }
+                                )) {
+                                    serverErrorPopover(server: server, error: error)
+                                }
                             }
 
                             Button {
@@ -171,6 +173,51 @@ struct SidebarView: View {
                 appState.sidebarFilter = .allSkills
             }
         }
+    }
+
+    private func serverErrorPopover(server: RemoteServer, error: String) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("Sync Failed", systemImage: "exclamationmark.triangle.fill")
+                .font(.headline)
+                .foregroundStyle(.red)
+
+            if SSHService.isAuthenticationFailure(error) {
+                Text(SSHService.authenticationGuidance)
+                    .font(.caption)
+                    .fixedSize(horizontal: false, vertical: true)
+                DisclosureGroup("Details") {
+                    Text(error)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .font(.caption)
+            } else {
+                Text(error)
+                    .font(.caption)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if let lastSync = server.lastSyncDate {
+                Text("Last successful sync: \(lastSync.formatted(date: .abbreviated, time: .shortened))")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+
+            HStack {
+                Spacer()
+                Button("Sync Again") {
+                    showingErrorForServer = nil
+                    syncServer(server)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+            }
+        }
+        .padding()
+        .frame(width: 300)
     }
 
     private func syncServer(_ server: RemoteServer) {

@@ -144,9 +144,15 @@ enum OneShotPrompts {
         """
     }
 
-    /// Wraps the user's request with the current file content so the agent has full context
-    /// without needing tool access.
-    static func userMessage(userRequest: String, filePath: String?, fileContent: String?) -> String {
+    /// Wraps the user's request with the current file content (and, when the transport
+    /// can't resume a native session, the conversation so far) so the agent has full
+    /// context without needing tool access.
+    static func userMessage(
+        userRequest: String,
+        filePath: String?,
+        fileContent: String?,
+        history: [ConversationTurn] = []
+    ) -> String {
         var parts: [String] = []
         if let filePath, let fileContent {
             let name = URL(fileURLWithPath: filePath).lastPathComponent
@@ -156,8 +162,63 @@ enum OneShotPrompts {
             parts.append("```")
             parts.append("")
         }
+        let transcript = historySection(history)
+        if !transcript.isEmpty {
+            parts.append(transcript)
+            parts.append("")
+        }
         parts.append("User's request:")
         parts.append(userRequest)
         return parts.joined(separator: "\n")
+    }
+
+    /// Maximum number of prior turns replayed into a one-shot prompt.
+    static let maxHistoryTurns = 12
+    /// Maximum total characters of replayed history. Oldest turns are dropped first.
+    static let maxHistoryChars = 24_000
+
+    /// Renders the tail of `history` as a "Conversation so far:" block, bounded by
+    /// `maxHistoryTurns` / `maxHistoryChars`. Empty string when there is nothing to replay.
+    static func historySection(_ history: [ConversationTurn]) -> String {
+        let trimmed = trimHistory(history)
+        guard !trimmed.isEmpty else { return "" }
+        var lines: [String] = []
+        lines.append("Conversation so far (oldest first — the file content above already reflects any accepted edits):")
+        for turn in trimmed {
+            let label = turn.role == .user ? "User" : "Assistant"
+            lines.append("\(label): \(turn.text.trimmingCharacters(in: .whitespacesAndNewlines))")
+        }
+        return lines.joined(separator: "\n\n")
+    }
+
+    /// Marks where a single oversized turn was cut. Kept short so it eats little budget.
+    static let historyElision = "…(earlier part of this message omitted)…\n"
+
+    static func trimHistory(_ history: [ConversationTurn]) -> [ConversationTurn] {
+        var kept: [ConversationTurn] = []
+        var chars = 0
+        for turn in history.reversed() {
+            let cost = turn.text.count + 16
+            if kept.isEmpty {
+                // The most recent turn is always replayed. Dropping it because it alone
+                // busts the budget would silently wipe the agent's whole memory, so cut
+                // the turn down to its tail instead.
+                let turn = cost > maxHistoryChars ? truncatedToBudget(turn) : turn
+                kept.append(turn)
+                chars += turn.text.count + 16
+                continue
+            }
+            if kept.count >= maxHistoryTurns || chars + cost > maxHistoryChars { break }
+            kept.append(turn)
+            chars += cost
+        }
+        return kept.reversed()
+    }
+
+    /// Keeps the tail of `turn.text` (the part closest to the current request) within
+    /// `maxHistoryChars`, prefixed with an elision marker so the model knows it was cut.
+    private static func truncatedToBudget(_ turn: ConversationTurn) -> ConversationTurn {
+        let budget = max(0, maxHistoryChars - 16 - historyElision.count)
+        return ConversationTurn(role: turn.role, text: historyElision + String(turn.text.suffix(budget)))
     }
 }

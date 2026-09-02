@@ -6,6 +6,9 @@ struct OnboardingView: View {
     @State private var step: OnboardingStep = .platforms
     @State private var grantedPaths: Set<String> = []
     @State private var accessError: String?
+    @State private var platformsPendingRemoval: [PlatformOption] = []
+    @State private var showingRemovalConfirmation = false
+    @State private var didPrefillSelection = false
 
     private enum OnboardingStep {
         case platforms
@@ -31,7 +34,19 @@ struct OnboardingView: View {
         .frame(minWidth: 900, minHeight: 620)
         .background(Color(NSColor.windowBackgroundColor))
         .onAppear {
+            prefillSelectionFromExistingConfiguration()
             refreshGrantedPaths()
+        }
+        .alert("Stop Watching Platforms?", isPresented: $showingRemovalConfirmation) {
+            Button("Remove and Finish", role: .destructive) {
+                completeOnboarding()
+            }
+            Button("Cancel", role: .cancel) {
+                platformsPendingRemoval = []
+            }
+        } message: {
+            let names = platformsPendingRemoval.map(\.displayName).joined(separator: ", ")
+            Text("Finishing will remove \(names) from the folders SkillKit scans. Items already in your library from those folders will disappear after the next scan. You can re-enable them any time in Settings → Platforms.")
         }
     }
 
@@ -49,26 +64,29 @@ struct OnboardingView: View {
                     .frame(maxWidth: 960, alignment: .leading)
             }
 
-            LazyVGrid(columns: [
-                GridItem(.flexible(), spacing: 18),
-                GridItem(.flexible(), spacing: 18)
-            ], spacing: 18) {
-                ForEach(PlatformOption.onboarding) { option in
-                    PlatformCard(
-                        option: option,
-                        isSelected: selectedPlatformIDs.contains(option.id)
-                    ) {
-                        toggle(option)
+            ScrollView {
+                LazyVGrid(columns: [
+                    GridItem(.flexible(), spacing: 16),
+                    GridItem(.flexible(), spacing: 16),
+                    GridItem(.flexible(), spacing: 16)
+                ], spacing: 16) {
+                    ForEach(PlatformOption.onboarding) { option in
+                        PlatformCard(
+                            option: option,
+                            isSelected: selectedPlatformIDs.contains(option.id),
+                            isDetected: option.isDetected
+                        ) {
+                            toggle(option)
+                        }
                     }
                 }
+                .frame(maxWidth: 880)
+                .padding(.bottom, 8)
             }
-            .frame(maxWidth: 720)
-
-            Spacer(minLength: 0)
         }
         .padding(.top, 48)
         .padding(.horizontal, 48)
-        .padding(.bottom, 32)
+        .padding(.bottom, 24)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
@@ -242,7 +260,7 @@ struct OnboardingView: View {
                 case .platforms:
                     step = .folders
                 case .folders:
-                    completeOnboarding()
+                    requestCompleteOnboarding()
                 }
             }
             .buttonStyle(.borderedProminent)
@@ -311,7 +329,23 @@ struct OnboardingView: View {
 
     }
 
-    private func completeOnboarding() {
+    /// Onboarding can be re-run from Settings. Start from what's already configured so
+    /// finishing doesn't silently drop platforms the user set up earlier.
+    private func prefillSelectionFromExistingConfiguration() {
+        guard !didPrefillSelection else { return }
+        didPrefillSelection = true
+        guard selectedPlatformIDs.isEmpty else { return }
+        let existingPaths = Set(UserDefaults.standard.stringArray(forKey: "customScanPaths") ?? [])
+        guard !existingPaths.isEmpty else { return }
+        let configured = PlatformOption.onboarding.filter { option in
+            existingPaths.contains(option.expandedSkillsPath)
+                || option.expandedXcodePath.map(existingPaths.contains) == true
+        }
+        selectedPlatformIDs = Set(configured.map(\.id))
+    }
+
+    /// The scan-path list `completeOnboarding` would write, given the current selection.
+    private func resolvedScanPaths() -> (paths: [String], existing: [String]) {
         let onboardingPaths = PlatformOption.onboarding.flatMap { option in
             [option.expandedSkillsPath, option.expandedXcodePath].compactMap(\.self)
         }
@@ -321,6 +355,35 @@ struct OnboardingView: View {
         let existingPaths = UserDefaults.standard.stringArray(forKey: "customScanPaths") ?? []
         let nonOnboardingPaths = existingPaths.filter { !onboardingPaths.contains($0) }
         let scanPaths = Array(Set(nonOnboardingPaths + grantedSelectedPaths)).sorted()
+        return (scanPaths, existingPaths)
+    }
+
+    /// Built-in platforms that are configured today but would be dropped by finishing.
+    private func platformsThatWouldBeRemoved() -> [PlatformOption] {
+        let (newPaths, existingPaths) = resolvedScanPaths()
+        let newSet = Set(newPaths)
+        let existingSet = Set(existingPaths)
+        return PlatformOption.onboarding.filter { option in
+            let paths = [option.expandedSkillsPath, option.expandedXcodePath].compactMap(\.self)
+            let wasConfigured = paths.contains(where: existingSet.contains)
+            let staysConfigured = paths.contains(where: newSet.contains)
+            return wasConfigured && !staysConfigured
+        }
+    }
+
+    private func requestCompleteOnboarding() {
+        let removals = platformsThatWouldBeRemoved()
+        if removals.isEmpty {
+            completeOnboarding()
+        } else {
+            platformsPendingRemoval = removals
+            showingRemovalConfirmation = true
+        }
+    }
+
+    private func completeOnboarding() {
+        let scanPaths = resolvedScanPaths().paths
+        platformsPendingRemoval = []
 
         UserDefaults.standard.set(scanPaths, forKey: "customScanPaths")
         for option in PlatformOption.onboarding {
@@ -340,6 +403,7 @@ struct OnboardingView: View {
 private struct PlatformCard: View {
     let option: PlatformOption
     let isSelected: Bool
+    var isDetected: Bool = false
     let action: () -> Void
 
     @State private var isHovered = false
@@ -349,14 +413,34 @@ private struct PlatformCard: View {
             VStack(alignment: .leading, spacing: 14) {
                 HStack {
                     // Beautiful platform icon badge
-                    Image(systemName: option.iconName)
-                        .font(.system(size: 20, weight: .bold))
-                        .foregroundStyle(option.color)
-                        .frame(width: 44, height: 44)
-                        .background(option.color.opacity(0.12))
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                    Group {
+                        if let asset = option.logoAssetName, NSImage(named: asset) != nil {
+                            Image(asset)
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .frame(width: 24, height: 24)
+                        } else {
+                            Image(systemName: option.iconName)
+                                .font(.system(size: 20, weight: .bold))
+                                .foregroundStyle(option.color)
+                        }
+                    }
+                    .frame(width: 44, height: 44)
+                    .background(option.color.opacity(0.12))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
 
                     Spacer()
+
+                    if isDetected {
+                        Text("Detected")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(.green)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 3)
+                            .background(Color.green.opacity(0.12))
+                            .clipShape(Capsule())
+                            .padding(.trailing, 6)
+                    }
 
                     // Selection indicator
                     Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
@@ -390,6 +474,7 @@ private struct PlatformCard: View {
             }
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(option.displayName + (isDetected ? ", detected on this Mac" : ""))
         .accessibilityValue(isSelected ? "Selected" : "Not selected")
     }
 }

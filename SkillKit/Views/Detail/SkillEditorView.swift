@@ -16,6 +16,8 @@ final class SkillEditorDocument {
     var isSavingRemote = false
     var showingSaveError = false
     var saveErrorMessage = ""
+    /// When this document last wrote successfully (local or remote). Reset on load.
+    var lastSaveDate: Date?
 
     private var fullFileContent: String = ""
     private var isLoading = false
@@ -38,7 +40,39 @@ final class SkillEditorDocument {
         }
     }
 
+    /// Whether the file on disk differs from what this document last loaded or
+    /// saved. Used to tell an external edit apart from a rescan that merely
+    /// re-observed our own write (same bytes, possibly a slightly different mtime).
+    func hasExternalChangeOnDisk(for skill: Skill) -> Bool {
+        guard !skill.isRemote, !isLoading else { return false }
+        guard let onDisk = Self.readLocalFile(at: skill.filePath) else { return false }
+        return onDisk != fullFileContent
+    }
+
+    /// Whether a local skill's file is still present (checked with sandbox access).
+    /// Remote skills always report `true`.
+    func fileExistsOnDisk(for skill: Skill) -> Bool {
+        guard !skill.isRemote else { return true }
+        let path = skill.filePath
+        return SandboxBookmarkManager.resolveAndAccess(path: Self.accessRoot(for: path)) { _ in
+            FileManager.default.fileExists(atPath: path)
+        }
+    }
+
     // MARK: - Local
+
+    /// The bookmarked root that grants sandbox access to `path`.
+    nonisolated private static func accessRoot(for path: String) -> String {
+        let customPaths = UserDefaults.standard.stringArray(forKey: "customScanPaths") ?? []
+        let sotDir = SkillKitSettings.sotDir
+        return ([sotDir] + customPaths).first(where: { path.hasPrefix($0) }) ?? path
+    }
+
+    nonisolated private static func readLocalFile(at path: String) -> String? {
+        SandboxBookmarkManager.resolveAndAccess(path: accessRoot(for: path)) { _ in
+            try? String(contentsOfFile: path, encoding: .utf8)
+        }
+    }
 
     private func loadLocal(_ skill: Skill) {
         isLoading = true
@@ -51,9 +85,7 @@ final class SkillEditorDocument {
 
         loadTask = Task.detached { [weak self] in
             let start = CFAbsoluteTimeGetCurrent()
-            let customPaths = UserDefaults.standard.stringArray(forKey: "customScanPaths") ?? []
-            let sotDir = SkillKitSettings.sotDir
-            let parentPath = ([sotDir] + customPaths).first(where: { path.hasPrefix($0) }) ?? path
+            let parentPath = Self.accessRoot(for: path)
 
             let data = SandboxBookmarkManager.resolveAndAccess(path: parentPath) { _ in
                 if let fileData = try? String(contentsOfFile: path, encoding: .utf8) {
@@ -74,22 +106,23 @@ final class SkillEditorDocument {
                 self.hasUnsavedChanges = false
                 self.showingSaveError = false
                 self.saveErrorMessage = ""
+                self.lastSaveDate = nil
             }
         }
     }
 
     private func saveLocal(_ skill: Skill) {
         let path = skill.filePath
-        let customPaths = UserDefaults.standard.stringArray(forKey: "customScanPaths") ?? []
-        let sotDir = SkillKitSettings.sotDir
-        let parentPath = ([sotDir] + customPaths).first(where: { path.hasPrefix($0) }) ?? path
+        let parentPath = Self.accessRoot(for: path)
 
         SandboxBookmarkManager.resolveAndAccess(path: parentPath) { _ in
             do {
                 SkillVersionHistory.recordSnapshot(for: skill, content: fullFileContent, reason: "Before save")
+                SkillScanner.active?.ignoreNextChange(for: skill.filePath)
                 try editorContent.write(toFile: skill.filePath, atomically: true, encoding: .utf8)
                 fullFileContent = editorContent
                 hasUnsavedChanges = false
+                lastSaveDate = .now
 
                 let parsed = FrontmatterParser.parse(editorContent)
                 if !parsed.name.isEmpty {
@@ -141,6 +174,7 @@ final class SkillEditorDocument {
                     hasUnsavedChanges = false
                     showingSaveError = false
                     saveErrorMessage = ""
+                    lastSaveDate = nil
                 }
             } catch {
                 guard !Task.isCancelled, loadGeneration == generation else { return }
@@ -167,23 +201,34 @@ final class SkillEditorDocument {
 
         isSavingRemote = true
 
+        // Capture what we are writing now: the editor may already show a
+        // different skill by the time the SSH write completes (e.g. a flush
+        // triggered by switching selection).
+        let contentToWrite = editorContent
+        let previousContent = fullFileContent
+        let generation = loadGeneration
+
         Task {
             do {
-                let previousContent = fullFileContent
-                try await SSHService.writeFile(server, path: remotePath, content: editorContent)
+                try await SSHService.writeFile(server, path: remotePath, content: contentToWrite)
                 await MainActor.run {
                     SkillVersionHistory.recordSnapshot(for: skill, content: previousContent, reason: "Before remote save")
-                    fullFileContent = editorContent
-                    hasUnsavedChanges = false
                     isSavingRemote = false
 
-                    let parsed = FrontmatterParser.parse(editorContent)
+                    // Only touch document state if this document still shows the saved skill.
+                    if loadGeneration == generation {
+                        fullFileContent = contentToWrite
+                        hasUnsavedChanges = editorContent != contentToWrite
+                        lastSaveDate = .now
+                    }
+
+                    let parsed = FrontmatterParser.parse(contentToWrite)
                     let nameToSave = parsed.name
                     let descToSave = parsed.description
                     let contentToSave = parsed.content
                     let frontmatterToSave = parsed.frontmatter
-                    let sizeToSave = editorContent.utf8.count
-                    
+                    let sizeToSave = contentToWrite.utf8.count
+
                     if !nameToSave.isEmpty {
                         skill.name = nameToSave
                     }
@@ -227,10 +272,21 @@ struct SkillEditorView: View {
                     Text("Saving...")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                } else if isEditable, !document.isLoadingRemote {
+                    if document.hasUnsavedChanges {
+                        Text("Unsaved changes")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                    } else if let saved = document.lastSaveDate {
+                        Text("Saved \(saved, format: .dateTime.hour().minute())")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                            .monospacedDigit()
+                    }
                 }
-
             }
             .padding(12)
+            .allowsHitTesting(false)
         }
     }
 }

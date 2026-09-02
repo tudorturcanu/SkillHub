@@ -5,18 +5,35 @@ import Foundation
 struct SkillKitSettings {
     private init() {}
 
+    private static let sotDirKey = "sotDir"
+
+    /// Where the library lives when the user hasn't chosen a custom root.
+    static var defaultSotDir: String {
+        let fm = FileManager.default
+        let appSupport = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        return appSupport.appendingPathComponent("LocalLibrary", isDirectory: true).path
+    }
+
     static var sotDir: String {
         get {
-            if let dir = UserDefaults.standard.string(forKey: "sotDir") {
+            if let dir = UserDefaults.standard.string(forKey: sotDirKey), !dir.isEmpty {
                 return dir
             }
-            let fm = FileManager.default
-            let appSupport = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-            let sot = appSupport.appendingPathComponent("LocalLibrary", isDirectory: true).path
-            return sot
+            return defaultSotDir
         }
-        set { UserDefaults.standard.set(newValue, forKey: "sotDir") }
-     }
+        set { UserDefaults.standard.set(newValue, forKey: sotDirKey) }
+    }
+
+    /// True when no custom library root has been chosen.
+    static var isUsingDefaultSotDir: Bool {
+        guard let dir = UserDefaults.standard.string(forKey: sotDirKey), !dir.isEmpty else { return true }
+        return dir == defaultSotDir
+    }
+
+    /// Clears any custom library root so `sotDir` falls back to `defaultSotDir`.
+    static func resetSotDirToDefault() {
+        UserDefaults.standard.removeObject(forKey: sotDirKey)
+    }
 
     static var sotSkillsDir: String { "\(sotDir)/skills" }
     static var sotAgentsDir: String { "\(sotDir)/agents" }

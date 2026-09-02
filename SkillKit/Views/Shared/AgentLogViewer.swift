@@ -1,7 +1,5 @@
 import SwiftUI
 
-#if DEBUG
-
 /// Viewer for the agent debug log file written by `AgentLogger`.
 struct AgentLogViewer: View {
     @State private var logContent = ""
@@ -106,5 +104,3 @@ struct AgentLogViewer: View {
     AgentLogViewer()
         .frame(width: 600, height: 400)
 }
-
-#endif

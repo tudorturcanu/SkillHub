@@ -13,7 +13,13 @@ struct SkillMetadataBar: View {
     @State private var showingHistory = false
     @State private var showingValidationIssues = false
     @State private var showingSecurity = false
+    /// Unfiltered deep-scan result; suppressions are applied at display time so
+    /// ignoring / un-ignoring a rule doesn't need another walk of the folder.
     @State private var deepScanResult: SecurityScanResult?
+    /// Cached so the bar doesn't decode the full history JSON on every render.
+    @State private var snapshotCount = 0
+    /// Cached because building it stats each agent's skills directory.
+    @State private var compatibilityMatrix: SkillCompatibilityMatrix?
 
     var body: some View {
         HStack(spacing: 8) {
@@ -55,11 +61,12 @@ struct SkillMetadataBar: View {
 
             Divider().frame(height: 16)
 
-            Text("\(characterCount) chars / \(wordCount) words / ~\(tokenCount) tokens")
+            Text("\(characterCount) chars / \(wordCount) words / \(TokenEstimator.label(for: skill.content))")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .fixedSize(horizontal: true, vertical: false)
+                .help(TokenEstimator.helpText)
 
             Divider().frame(height: 16)
 
@@ -108,6 +115,26 @@ struct SkillMetadataBar: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .background(.bar)
+        .onAppear(perform: refreshCachedState)
+        .onChange(of: skill.filePath) {
+            // A different skill (or a moved one): nothing from the previous
+            // one applies.
+            deepScanResult = nil
+            showingSecurity = false
+            showingHistory = false
+            showingCompatibility = false
+            refreshCachedState()
+        }
+        .onChange(of: skill.fileModifiedDate) {
+            // Saved / restored / rescanned: the deep scan and history are stale.
+            deepScanResult = nil
+            refreshCachedState()
+        }
+    }
+
+    private func refreshCachedState() {
+        snapshotCount = SkillVersionHistory.snapshotCount(for: skill)
+        compatibilityMatrix = skill.compatibilityMatrix
     }
 
     private var displayPath: String {
@@ -148,14 +175,8 @@ struct SkillMetadataBar: View {
         skill.content.count
     }
 
-    private var tokenCount: Int {
-        Int(Double(wordCount) / 0.75)
-    }
-
-    private var compatibilitySummaryStatus: SkillCompatibilityStatus {
-        skill.compatibilityReports
-            .map(\.status)
-            .max(by: { $0.rawValue < $1.rawValue }) ?? .compatible
+    private var currentCompatibilityMatrix: SkillCompatibilityMatrix {
+        compatibilityMatrix ?? skill.compatibilityMatrix
     }
 
     @ViewBuilder
@@ -182,8 +203,10 @@ struct SkillMetadataBar: View {
 
     @ViewBuilder
     private var compatibilityStatusButton: some View {
-        let status = compatibilitySummaryStatus
+        let matrix = currentCompatibilityMatrix
+        let status = matrix.summaryStatus
         Button {
+            compatibilityMatrix = skill.compatibilityMatrix // fresh stats when opened
             showingCompatibility.toggle()
         } label: {
             Image(systemName: status.icon)
@@ -193,33 +216,34 @@ struct SkillMetadataBar: View {
         .buttonStyle(.plain)
         .help("Agent compatibility: \(status.label)")
         .popover(isPresented: $showingCompatibility) {
-            CompatibilityMatrixView(reports: skill.compatibilityReports)
+            CompatibilityMatrixView(matrix: currentCompatibilityMatrix)
         }
     }
 
     @ViewBuilder
     private var versionHistoryButton: some View {
-        let snapshots = SkillVersionHistory.snapshots(for: skill)
         Button {
             showingHistory.toggle()
         } label: {
             Label {
-                Text("\(snapshots.count)")
+                Text("\(snapshotCount)")
                     .monospacedDigit()
             } icon: {
                 Image(systemName: "clock.arrow.circlepath")
             }
             .font(.caption)
-            .foregroundStyle(snapshots.isEmpty ? Color.secondary : Color.blue)
+            .foregroundStyle(snapshotCount == 0 ? Color.secondary : Color.blue)
         }
         .buttonStyle(.plain)
-        .help("\(snapshots.count) saved version\(snapshots.count == 1 ? "" : "s")")
+        .help("\(snapshotCount) saved version\(snapshotCount == 1 ? "" : "s")")
         .popover(isPresented: $showingHistory) {
             VersionHistoryView(
-                snapshots: snapshots,
+                skill: skill,
+                canRestore: !skill.isReadOnly && !skill.isRemote,
                 onRestore: { snapshot in
                     onRestoreSnapshot(snapshot)
                     showingHistory = false
+                    snapshotCount = SkillVersionHistory.snapshotCount(for: skill)
                 }
             )
         }
@@ -244,9 +268,12 @@ struct SkillMetadataBar: View {
     }
 
     /// Active scan: the deep (file-aware) result once requested, else the
-    /// fast in-memory body scan.
+    /// fast in-memory scan. Both have the user's suppressions applied.
     private var activeScan: SecurityScanResult {
-        deepScanResult ?? skill.securityScan
+        if let deepScanResult {
+            return deepScanResult.excluding(ruleIDs: SecurityFindingSuppressions.shared.ruleIDs(for: skill.filePath))
+        }
+        return skill.securityScan
     }
 
     @ViewBuilder
@@ -263,9 +290,11 @@ struct SkillMetadataBar: View {
         .help(result.isClean ? "No security findings" : "\(result.rating) · \(result.summaryText)")
         .popover(isPresented: $showingSecurity) {
             SecurityFindingsView(
-                result: activeScan,
+                skillPath: skill.filePath,
+                baseResult: deepScanResult ?? SecurityScanner.scan(text: skill.securityScanSourceText),
+                isDeepResult: deepScanResult != nil,
                 canDeepScan: skill.isDirectory && !skill.isRemote,
-                onDeepScan: { deepScanResult = skill.deepSecurityScan() }
+                onDeepScan: { deepScanResult = skill.deepSecurityScan(applyingSuppressions: false) }
             )
         }
     }
@@ -305,13 +334,26 @@ struct SkillMetadataBar: View {
     }
 }
 
+// MARK: - Security findings
+
 private struct SecurityFindingsView: View {
-    let result: SecurityScanResult
+    let skillPath: String
+    /// Unfiltered result; suppressions are applied here so the popover
+    /// updates live when a rule is ignored or restored.
+    let baseResult: SecurityScanResult
+    let isDeepResult: Bool
     let canDeepScan: Bool
     let onDeepScan: () -> Void
-    @State private var didDeepScan = false
+    @State private var showingIgnored = false
+
+    private var suppressions: SecurityFindingSuppressions { .shared }
+
+    private var filteredResult: SecurityScanResult {
+        baseResult.excluding(ruleIDs: suppressions.ruleIDs(for: skillPath))
+    }
 
     var body: some View {
+        let result = filteredResult
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
@@ -322,7 +364,7 @@ private struct SecurityFindingsView: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
-                riskBadge
+                riskBadge(result)
             }
 
             if result.isClean {
@@ -358,21 +400,24 @@ private struct SecurityFindingsView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 10) {
                         ForEach(result.findings.sorted { $0.severity > $1.severity }) { finding in
-                            findingRow(finding)
+                            findingRow(finding, ignored: false)
                         }
                     }
                 }
                 .frame(maxHeight: 240)
             }
 
+            if !result.suppressedFindings.isEmpty {
+                ignoredSection(result.suppressedFindings)
+            }
+
             if canDeepScan {
                 Divider()
                 Button {
                     onDeepScan()
-                    didDeepScan = true
                 } label: {
                     Label(
-                        didDeepScan ? "Re-scan bundled scripts" : "Scan bundled scripts",
+                        isDeepResult ? "Re-scan bundled scripts" : "Scan bundled scripts",
                         systemImage: "doc.text.magnifyingglass"
                     )
                     .font(.caption)
@@ -385,10 +430,10 @@ private struct SecurityFindingsView: View {
                 .foregroundStyle(.secondary)
         }
         .padding()
-        .frame(width: 320, alignment: .leading)
+        .frame(width: 340, alignment: .leading)
     }
 
-    private var riskBadge: some View {
+    private func riskBadge(_ result: SecurityScanResult) -> some View {
         Text(result.isClean ? result.rating : "\(result.rating) · \(result.findingCountText)")
             .font(.caption.weight(.semibold))
             .foregroundStyle(result.isClean ? .green : (result.topSeverity?.color ?? .secondary))
@@ -414,16 +459,49 @@ private struct SecurityFindingsView: View {
         }
     }
 
-    private func findingRow(_ finding: SecurityFinding) -> some View {
+    @ViewBuilder
+    private func ignoredSection(_ suppressed: [SecurityFinding]) -> some View {
+        let ruleIDs = Set(suppressed.map(\.ruleID)).sorted()
+        Divider()
+        DisclosureGroup(isExpanded: $showingIgnored) {
+            VStack(alignment: .leading, spacing: 10) {
+                ForEach(suppressed.sorted { $0.severity > $1.severity }) { finding in
+                    findingRow(finding, ignored: true)
+                }
+            }
+            .padding(.top, 6)
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "eye.slash")
+                    .foregroundStyle(.secondary)
+                Text("Ignored (\(suppressed.count)) — \(showingIgnored ? "Hide" : "Show")")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button("Restore all") {
+                    for id in ruleIDs {
+                        suppressions.unsuppress(id, for: skillPath)
+                    }
+                }
+                .buttonStyle(.borderless)
+                .controlSize(.mini)
+                .font(.caption2)
+            }
+        }
+        .help("Findings ignored for this skill. They are excluded from the score.")
+    }
+
+    private func findingRow(_ finding: SecurityFinding, ignored: Bool) -> some View {
         HStack(alignment: .top, spacing: 8) {
             Image(systemName: finding.severity.icon)
-                .foregroundStyle(finding.severity.color)
+                .foregroundStyle(ignored ? Color.secondary : finding.severity.color)
                 .frame(width: 16)
 
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(finding.title)
                         .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(ignored ? .secondary : .primary)
                     if finding.heuristic {
                         Text("heuristic")
                             .font(.caption2)
@@ -431,13 +509,18 @@ private struct SecurityFindingsView: View {
                             .padding(.horizontal, 4)
                             .background(.secondary.opacity(0.12), in: Capsule())
                     }
+                    Text(finding.ruleID)
+                        .font(.caption2.monospaced())
+                        .foregroundStyle(.tertiary)
                 }
-                Text("\(finding.category.rawValue) · line \(finding.lineNumber)")
+                Text("\(finding.category.rawValue) · \(finding.locationText)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Text("+\(finding.severity.weight) \(finding.severity.label.lowercased()) severity points")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                if !ignored {
+                    Text("+\(finding.severity.weight) \(finding.severity.label.lowercased()) severity points")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
                 if !finding.snippet.isEmpty {
                     Text(finding.snippet)
                         .font(.system(.caption2, design: .monospaced))
@@ -445,10 +528,58 @@ private struct SecurityFindingsView: View {
                         .lineLimit(2)
                         .truncationMode(.tail)
                 }
+
+                HStack(spacing: 10) {
+                    if finding.isInMainFile {
+                        Button {
+                            NotificationCenter.default.post(
+                                name: .jumpToEditorLine,
+                                object: nil,
+                                userInfo: ["line": finding.lineNumber]
+                            )
+                        } label: {
+                            Label("Jump to line \(finding.lineNumber)", systemImage: "arrow.right.to.line")
+                        }
+                        .help("Select this line in the editor")
+                    } else if let file = finding.file {
+                        Button {
+                            NotificationCenter.default.post(
+                                name: .jumpToEditorLine,
+                                object: nil,
+                                userInfo: ["line": finding.lineNumber, "file": file]
+                            )
+                        } label: {
+                            Label("Line \(finding.lineNumber) in \(file)", systemImage: "doc.text")
+                        }
+                        .help("This finding is in a bundled file, not the main skill file")
+                    }
+
+                    if ignored {
+                        Button {
+                            suppressions.unsuppress(finding.ruleID, for: skillPath)
+                        } label: {
+                            Label("Stop ignoring", systemImage: "eye")
+                        }
+                        .help("Show \(finding.ruleID) findings for this skill again")
+                    } else {
+                        Button {
+                            suppressions.suppress(finding.ruleID, for: skillPath)
+                        } label: {
+                            Label("Ignore in this skill", systemImage: "eye.slash")
+                        }
+                        .help("Hide every \(finding.ruleID) finding for this skill and drop it from the score")
+                    }
+                }
+                .buttonStyle(.borderless)
+                .controlSize(.mini)
+                .font(.caption2)
+                .padding(.top, 2)
             }
         }
     }
 }
+
+// MARK: - Validation
 
 private struct ValidationIssuesView: View {
     let issues: [SkillValidationIssue]
@@ -483,6 +614,8 @@ private struct ValidationIssuesView: View {
         .frame(width: 280, alignment: .leading)
     }
 }
+
+// MARK: - Health
 
 private struct SkillHealthView: View {
     let report: SkillHealthReport
@@ -534,17 +667,32 @@ private struct SkillHealthView: View {
     }
 }
 
+// MARK: - Compatibility
+
 private struct CompatibilityMatrixView: View {
-    let reports: [SkillCompatibilityReport]
+    let matrix: SkillCompatibilityMatrix
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Compatibility")
-                .font(.headline)
+            HStack {
+                Text("Compatibility")
+                    .font(.headline)
+                Spacer()
+                Text("\(matrix.targetCount) agent\(matrix.targetCount == 1 ? "" : "s")")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            if let note = matrix.note {
+                Text(note)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 8) {
-                    ForEach(reports) { report in
+                    ForEach(matrix.rows) { report in
                         VStack(alignment: .leading, spacing: 6) {
                             HStack {
                                 Label(report.targetName, systemImage: report.status.icon)
@@ -555,6 +703,17 @@ private struct CompatibilityMatrixView: View {
                                     .foregroundStyle(report.status.color)
                             }
 
+                            Label(report.installState.label, systemImage: report.installState.icon)
+                                .font(.caption)
+                                .foregroundStyle(report.installState.isInstalled ? .green : .secondary)
+
+                            if !report.collapsedTargetNames.isEmpty {
+                                Text(report.collapsedTargetNames.joined(separator: " · "))
+                                    .font(.caption2)
+                                    .foregroundStyle(.tertiary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+
                             if report.findings.isEmpty {
                                 Text("No compatibility warnings detected.")
                                     .font(.caption)
@@ -563,7 +722,8 @@ private struct CompatibilityMatrixView: View {
                                 ForEach(report.findings) { finding in
                                     Label(finding.message, systemImage: finding.status.icon)
                                         .font(.caption)
-                                        .foregroundStyle(finding.status.color)
+                                        .foregroundStyle(finding.status == .compatible ? Color.secondary : finding.status.color)
+                                        .fixedSize(horizontal: false, vertical: true)
                                 }
                             }
                         }
@@ -575,13 +735,21 @@ private struct CompatibilityMatrixView: View {
             .frame(maxHeight: 320)
         }
         .padding()
-        .frame(width: 360, alignment: .leading)
+        .frame(width: 380, alignment: .leading)
     }
 }
 
+// MARK: - Version history
+
 private struct VersionHistoryView: View {
-    let snapshots: [SkillVersionSnapshot]
+    let skill: Skill
+    let canRestore: Bool
     let onRestore: (SkillVersionSnapshot) -> Void
+
+    @State private var snapshots: [SkillVersionSnapshot] = []
+    @State private var currentText = ""
+    @State private var expandedSnapshotID: UUID?
+    @State private var pendingRestore: SkillVersionSnapshot?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -599,35 +767,99 @@ private struct VersionHistoryView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 8) {
                         ForEach(snapshots) { snapshot in
-                            HStack(alignment: .top, spacing: 10) {
-                                VStack(alignment: .leading, spacing: 3) {
-                                    Text(snapshot.displayTitle)
-                                        .font(.subheadline.bold())
-                                    Text(snapshot.reason)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                    Text("\(snapshot.content.count) chars")
-                                        .font(.caption)
-                                        .foregroundStyle(.tertiary)
-                                }
-
-                                Spacer()
-
-                                Button("Restore") {
-                                    onRestore(snapshot)
-                                }
-                                .buttonStyle(.bordered)
-                                .controlSize(.small)
-                            }
-                            .padding(8)
-                            .background(Color(NSColor.controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+                            snapshotRow(snapshot)
                         }
                     }
                 }
-                .frame(maxHeight: 300)
+                .frame(maxHeight: expandedSnapshotID == nil ? 300 : 460)
             }
         }
         .padding()
-        .frame(width: 340, alignment: .leading)
+        .frame(width: expandedSnapshotID == nil ? 340 : 560, alignment: .leading)
+        .onAppear(perform: load)
+        .confirmationDialog(
+            "Restore this version?",
+            isPresented: Binding(
+                get: { pendingRestore != nil },
+                set: { if !$0 { pendingRestore = nil } }
+            ),
+            titleVisibility: .visible,
+            presenting: pendingRestore
+        ) { snapshot in
+            Button("Restore") {
+                pendingRestore = nil
+                onRestore(snapshot)
+            }
+            Button("Cancel", role: .cancel) { pendingRestore = nil }
+        } message: { snapshot in
+            Text("The file will be replaced with the version from \(snapshot.displayTitle). A snapshot of the current text will be kept.")
+        }
+    }
+
+    private func load() {
+        snapshots = SkillVersionHistory.snapshots(for: skill)
+        currentText = skill.securityScanSourceText
+    }
+
+    @ViewBuilder
+    private func snapshotRow(_ snapshot: SkillVersionSnapshot) -> some View {
+        let isExpanded = expandedSnapshotID == snapshot.id
+        let isIdentical = snapshot.content == currentText
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 10) {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        expandedSnapshotID = isExpanded ? nil : snapshot.id
+                    }
+                } label: {
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .frame(width: 12)
+                            .padding(.top, 3)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(snapshot.displayTitle)
+                                .font(.subheadline.bold())
+                            Text(snapshot.reason)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Text(isIdentical ? "\(snapshot.content.count) chars · identical to current" : "\(snapshot.content.count) chars")
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
+                }
+                .buttonStyle(.plain)
+                .help(isExpanded ? "Hide the diff against the current text" : "Preview the diff against the current text")
+
+                Spacer()
+
+                Button("Restore") {
+                    pendingRestore = snapshot
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(!canRestore || isIdentical)
+                .help(canRestore ? "Replace the file with this version (after confirmation)" : "Read-only or remote items can't be restored here")
+            }
+
+            if isExpanded {
+                DiffReviewPanel(
+                    original: currentText,
+                    proposed: snapshot.content,
+                    onAccept: nil,
+                    onReject: nil
+                )
+                .frame(height: 260)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                )
+            }
+        }
+        .padding(8)
+        .background(Color(NSColor.controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
     }
 }

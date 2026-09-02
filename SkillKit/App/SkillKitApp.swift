@@ -1,8 +1,17 @@
 import SwiftUI
 import SwiftData
 
+/// Gives the editor a chance to write a pending autosave before the process
+/// goes away: quitting inside the 1s debounce would otherwise lose the edit.
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationWillTerminate(_ notification: Notification) {
+        NotificationCenter.default.post(name: .applicationWillTerminate, object: nil)
+    }
+}
+
 @main
 struct SkillKitApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var appState = AppState()
     @AppStorage("AgentDebugLogging") private var debugLoggingEnabled = false
     @AppStorage("didCompleteOnboarding") private var didCompleteOnboarding = false
@@ -63,7 +72,61 @@ struct SkillKitApp: App {
                     NotificationCenter.default.post(name: .saveCurrentSkill, object: nil)
                 }
                 .keyboardShortcut("s", modifiers: .command)
+                .disabled(appState.selectedSkill == nil || appState.selectedSkill?.isReadOnly == true)
+
+                Button("Duplicate…") {
+                    guard let skill = appState.selectedSkill else { return }
+                    appState.skillToDuplicate = skill
+                    appState.showingDuplicateSkillSheet = true
+                }
+                .keyboardShortcut("d", modifiers: .command)
                 .disabled(appState.selectedSkill == nil)
+
+                Button("Move to Trash") {
+                    NotificationCenter.default.post(name: .deleteCurrentSkill, object: nil)
+                }
+                .keyboardShortcut(.delete, modifiers: .command)
+                .disabled(appState.selectedSkill == nil || appState.selectedSkill?.isReadOnly == true)
+            }
+            CommandGroup(after: .textEditing) {
+                Button("Find in Library") {
+                    NotificationCenter.default.post(name: .focusLibrarySearch, object: nil)
+                }
+                .keyboardShortcut("f", modifiers: [.command, .option])
+            }
+            CommandMenu("Format") {
+                Button("Bold") {
+                    NotificationCenter.default.post(name: .applyMarkdownFormat, object: "bold")
+                }
+                .keyboardShortcut("b", modifiers: .command)
+
+                Button("Italic") {
+                    NotificationCenter.default.post(name: .applyMarkdownFormat, object: "italic")
+                }
+                .keyboardShortcut("i", modifiers: .command)
+
+                Button("Strikethrough") {
+                    NotificationCenter.default.post(name: .applyMarkdownFormat, object: "strikethrough")
+                }
+                .keyboardShortcut("x", modifiers: [.command, .shift])
+            }
+            CommandGroup(before: .sidebar) {
+                Button("Editor") {
+                    NotificationCenter.default.post(name: .setDetailViewMode, object: "edit")
+                }
+                .keyboardShortcut("1", modifiers: [.command, .option])
+
+                Button("Preview") {
+                    NotificationCenter.default.post(name: .setDetailViewMode, object: "preview")
+                }
+                .keyboardShortcut("2", modifiers: [.command, .option])
+
+                Button("Playground") {
+                    NotificationCenter.default.post(name: .setDetailViewMode, object: "playground")
+                }
+                .keyboardShortcut("3", modifiers: [.command, .option])
+
+                Divider()
             }
             CommandMenu("Library") {
                 Button("Dashboard") {
@@ -121,6 +184,7 @@ struct SkillKitApp: App {
             MenuBarView()
                 .environment(appState)
                 .modelContainer(sharedModelContainer)
+                .preferredColorScheme(appColorScheme.colorScheme)
         }
         .menuBarExtraStyle(.window)
 
@@ -128,6 +192,7 @@ struct SkillKitApp: App {
             SettingsView()
                 .environment(appState)
                 .modelContainer(sharedModelContainer)
+                .preferredColorScheme(appColorScheme.colorScheme)
         }
     }
 

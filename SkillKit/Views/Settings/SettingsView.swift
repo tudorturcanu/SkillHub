@@ -8,7 +8,7 @@ extension Notification.Name {
 // MARK: - Settings Tab Definition
 
 enum SettingsTab: String, CaseIterable, Identifiable {
-    case platforms, scanDirs, servers, security
+    case platforms, scanDirs, servers, agents, security
     #if DEBUG
     case release
     #endif
@@ -21,6 +21,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .platforms: "Platforms"
         case .scanDirs: "Folders"
         case .servers: "Servers"
+        case .agents: "Agents"
         case .security: "Security"
         #if DEBUG
         case .release: "Release"
@@ -36,6 +37,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .platforms: "checkmark.rectangle.stack"
         case .scanDirs: "folder.badge.gearshape"
         case .servers: "server.rack"
+        case .agents: "terminal"
         case .security: "shield.lefthalf.filled"
         #if DEBUG
         case .release: "shippingbox"
@@ -63,6 +65,11 @@ struct SettingsView: View {
     @State private var showingPlatformSheet = false
     @State private var editingPlatform: PlatformOption? = nil
     @State private var dataOperationMessage: String?
+    @State private var isScanning = false
+    @State private var lastScanDate: Date?
+    @State private var lastScanCount: Int?
+    @State private var includePluginSkills = SkillKitSettings.includePluginSkills
+    @State private var libraryRoot = SkillKitSettings.sotDir
 
     var body: some View {
         VStack(spacing: 0) {
@@ -88,6 +95,16 @@ struct SettingsView: View {
         .fixedSize(horizontal: false, vertical: true)
         .onAppear {
             loadCustomPaths()
+            includePluginSkills = SkillKitSettings.includePluginSkills
+            libraryRoot = SkillKitSettings.sotDir
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .scanDidStart)) { _ in
+            isScanning = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .scanDidFinish)) { note in
+            isScanning = false
+            lastScanDate = .now
+            lastScanCount = note.userInfo?["count"] as? Int
         }
         .sheet(isPresented: $showingPlatformSheet) {
             CustomPlatformSheet(platformToEdit: editingPlatform) { platform in
@@ -138,6 +155,8 @@ struct SettingsView: View {
             scanSettings
         case .servers:
             ServersSettingsView()
+        case .agents:
+            AgentsSettingsView()
         case .security:
             securitySettings
         #if DEBUG
@@ -162,7 +181,8 @@ struct SettingsView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
-            VStack(spacing: 0) {
+            ScrollView {
+              VStack(spacing: 0) {
                 ForEach(PlatformOption.allPlatforms) { option in
                     PlatformSettingsRow(
                         option: option,
@@ -195,14 +215,14 @@ struct SettingsView: View {
                             .padding(.leading, 36)
                     }
                 }
+              }
             }
+            .frame(maxHeight: 380)
             .background(Color(NSColor.controlBackgroundColor))
             .clipShape(RoundedRectangle(cornerRadius: 8))
 
             HStack {
-                Button("Rescan Now") {
-                    saveCustomPaths()
-                }
+                rescanButton
 
                 Button {
                     editingPlatform = nil
@@ -217,13 +237,145 @@ struct SettingsView: View {
                     didCompleteOnboarding = false
                 }
             }
+
+            scanStatusView
         }
         .padding()
         .id(bookmarkRefreshTrigger)
     }
 
+    /// Triggers a full rescan and shows progress. All rescan entry points rescan every
+    /// enabled platform and folder; there is no per-platform scan.
+    private var rescanButton: some View {
+        Button {
+            saveCustomPaths()
+        } label: {
+            if isScanning {
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.small)
+                    Text("Scanning…")
+                }
+            } else {
+                Text("Rescan Now")
+            }
+        }
+        .disabled(isScanning)
+        .accessibilityLabel("Rescan all platforms")
+        .accessibilityValue(isScanning ? "Scanning" : "")
+    }
+
+    @ViewBuilder
+    private var scanStatusView: some View {
+        if isScanning {
+            Label("Scanning all platforms and folders…", systemImage: "arrow.triangle.2.circlepath")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        } else if let lastScanDate {
+            let time = lastScanDate.formatted(date: .omitted, time: .shortened)
+            let count = lastScanCount.map { " — \($0) item\($0 == 1 ? "" : "s")" } ?? ""
+            Label("Last scan: \(time)\(count)", systemImage: "checkmark.circle")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    // MARK: - Library root & plugin skills
+
+    private var librarySettings: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Library")
+                .font(.headline)
+
+            Text("SkillKit keeps the skills, agents, and rules it manages under this root. Changing it triggers a rescan.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 8) {
+                    Image(systemName: "books.vertical")
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Library root")
+                            .font(.body.weight(.semibold))
+                        Text(libraryRoot)
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                            .help(libraryRoot)
+                            .textSelection(.enabled)
+                    }
+                    Spacer()
+                    Button {
+                        revealPath(libraryRoot)
+                    } label: {
+                        Image(systemName: "arrow.up.forward.square")
+                    }
+                    .buttonStyle(.plain)
+                    .help("Reveal in Finder")
+                    .accessibilityLabel("Reveal library root in Finder")
+                    Button("Choose…") {
+                        chooseLibraryRoot()
+                    }
+                    Button("Reset to Default") {
+                        SkillKitSettings.resetSotDirToDefault()
+                        libraryRoot = SkillKitSettings.sotDir
+                        saveCustomPaths()
+                    }
+                    .disabled(SkillKitSettings.isUsingDefaultSotDir)
+                }
+
+                Divider()
+
+                Toggle(isOn: $includePluginSkills) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Include plugin-installed skills")
+                            .font(.body.weight(.semibold))
+                        Text("Show skills installed by Claude Code plugins and Claude Desktop. They are read-only.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .toggleStyle(.checkbox)
+                .onChange(of: includePluginSkills) { _, newValue in
+                    guard newValue != SkillKitSettings.includePluginSkills else { return }
+                    SkillKitSettings.includePluginSkills = newValue
+                    saveCustomPaths()
+                }
+            }
+            .padding(12)
+            .background(Color(NSColor.controlBackgroundColor))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+        }
+    }
+
+    private func chooseLibraryRoot() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.canCreateDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.showsHiddenFiles = true
+        panel.prompt = "Use as Library Root"
+        panel.directoryURL = URL(fileURLWithPath: SkillKitSettings.sotDir)
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+            DispatchQueue.main.async {
+                SandboxBookmarkManager.saveBookmark(for: url)
+                SkillKitSettings.sotDir = url.path
+                libraryRoot = url.path
+                Self.logger.info("Library root changed to \(url.path)")
+                saveCustomPaths()
+            }
+        }
+    }
+
     private var scanSettings: some View {
         VStack(alignment: .leading, spacing: 12) {
+            librarySettings
+
+            Divider()
+                .padding(.vertical, 4)
+
             Text("Custom Scan Directories")
                 .font(.headline)
 
@@ -301,9 +453,7 @@ struct SettingsView: View {
             }
 
             HStack {
-                Button("Rescan Now") {
-                    saveCustomPaths()
-                }
+                rescanButton
 
                 Spacer()
                 Button("Add Directory...") {
@@ -324,6 +474,8 @@ struct SettingsView: View {
                     }
                 }
             }
+
+            scanStatusView
         }
         .padding()
         .id(bookmarkRefreshTrigger)
@@ -416,9 +568,10 @@ struct SettingsView: View {
             Text("Data Management")
                 .font(.headline)
             
-            Text("Export or import all your skills to a JSON file.")
+            Text("Export or import all your skills to a JSON file. " + SkillExporter.exportContentsDescription)
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
             
             HStack(spacing: 16) {
                 Button("Export Data...") {
@@ -659,8 +812,8 @@ private struct PlatformSettingsRow: View {
                 Image(systemName: "arrow.triangle.2.circlepath")
             }
             .buttonStyle(.plain)
-            .help("Rescan this platform")
-            .accessibilityLabel("Rescan \(option.displayName)")
+            .help("Rescan all platforms")
+            .accessibilityLabel("Rescan all platforms")
             .disabled(!isEnabled)
         }
         .padding(.vertical, 10)

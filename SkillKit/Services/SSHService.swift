@@ -93,14 +93,52 @@ enum SSHService {
         if paths.isEmpty { return [] }
 
         // Read all files in a single SSH call
-        let catCmds = paths.map { "echo '---SKILLKIT_DELIM:\($0)---' && cat \(shellEscape($0))" }
+        // Escape the delimiter argument too: a path containing a quote would
+        // otherwise break out of the echo and turn the whole chain into a
+        // syntax error, which reads back as "this server has no skills".
+        let catCmds = paths.map {
+            "echo \(shellEscape(delimiterPrefix + $0 + delimiterSuffix)) && cat \(shellEscape($0))"
+        }
         let combined = catCmds.joined(separator: " && ")
-        let (content, _, _) = try await run(
+        let (content, errorOutput, exitCode) = try await run(
             args: baseArgs(for: server) + [combined]
         )
+        if exitCode != 0 && content.isEmpty {
+            throw SSHError.commandFailed(
+                errorOutput.isEmpty ? "Could not read skills from the server." : errorOutput
+            )
+        }
 
-        return parseDelimitedOutput(content)
+        return parseDelimitedOutput(content).map { (path: repairLegacyRemotePath($0.path), content: $0.content) }
     }
+
+    // MARK: - Path helpers
+
+    /// Delimiter line prefix emitted by `findSkills` before each remote file's content.
+    static let delimiterPrefix = "---SKILLKIT_DELIM:"
+    static let delimiterSuffix = "---"
+
+    /// Earlier builds sliced the delimiter line at a fixed offset that was three characters
+    /// short, so every remote path was persisted as `IM:/home/...`. Strips that artifact.
+    /// Safe to call on already-correct paths.
+    static func repairLegacyRemotePath(_ path: String) -> String {
+        if path.hasPrefix("IM:") {
+            return String(path.dropFirst(3))
+        }
+        return path
+    }
+
+    /// Returns true when an SSH error message indicates the server rejected our key/agent
+    /// authentication — the only kind SkillKit supports because ssh runs with `BatchMode=yes`
+    /// and can never prompt for a password or passphrase.
+    static func isAuthenticationFailure(_ message: String) -> Bool {
+        let lower = message.lowercased()
+        return lower.contains("permission denied") || lower.contains("publickey")
+    }
+
+    /// Friendly guidance shown instead of raw stderr for authentication failures.
+    static let authenticationGuidance =
+        "SkillKit can't prompt for passwords or key passphrases. Load your key into ssh-agent (`ssh-add ~/.ssh/id_ed25519`) or choose an unencrypted key file."
 
     static func readFile(_ server: RemoteServer, path: String) async throws -> String {
         let (stdout, stderr, code) = try await run(
@@ -186,22 +224,24 @@ enum SSHService {
         }
     }
 
-    private static func parseDelimitedOutput(_ output: String) -> [(path: String, content: String)] {
+    /// Splits the combined `echo '---SKILLKIT_DELIM:<path>---' && cat <path>` output produced by
+    /// `findSkills` into (path, content) pairs. Internal for unit testing.
+    static func parseDelimitedOutput(_ output: String) -> [(path: String, content: String)] {
         var results: [(path: String, content: String)] = []
         let lines = output.components(separatedBy: "\n")
         var currentPath: String?
         var currentLines: [String] = []
 
         for line in lines {
-            if line.hasPrefix("---SKILLKIT_DELIM:") && line.hasSuffix("---") {
+            if line.hasPrefix(delimiterPrefix) && line.hasSuffix(delimiterSuffix)
+                && line.count >= delimiterPrefix.count + delimiterSuffix.count {
                 // Save previous block
                 if let path = currentPath {
                     results.append((path: path, content: currentLines.joined(separator: "\n")))
                 }
-                // Extract path from delimiter
-                let start = line.index(line.startIndex, offsetBy: 15)
-                let end = line.index(line.endIndex, offsetBy: -3)
-                currentPath = String(line[start..<end])
+                // Extract path from delimiter: strip the exact prefix and suffix rather than
+                // slicing at a hardcoded offset (a stale offset once produced "IM:/..." paths).
+                currentPath = String(line.dropFirst(delimiterPrefix.count).dropLast(delimiterSuffix.count))
                 currentLines = []
             } else {
                 currentLines.append(line)

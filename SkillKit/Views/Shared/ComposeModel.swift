@@ -2,11 +2,11 @@ import Foundation
 
 // MARK: - Chat Model
 
-enum ChatRole { case user, assistant }
+enum ChatRole: String, Codable, Sendable { case user, assistant }
 
-enum DiffStatus: Sendable { case pending, accepted, rejected }
+enum DiffStatus: String, Codable, Sendable { case pending, accepted, rejected }
 
-struct ChatDiff: Sendable {
+struct ChatDiff: Sendable, Codable {
     let path: String
     /// Pre-edit content. `nil` means the file did not exist before the agent wrote it.
     let original: String?
@@ -37,7 +37,7 @@ struct ChatDiff: Sendable {
     }
 }
 
-struct ChatMessage: Identifiable {
+struct ChatMessage: Identifiable, Codable, Sendable {
     let id: UUID
     let role: ChatRole
     var text: String

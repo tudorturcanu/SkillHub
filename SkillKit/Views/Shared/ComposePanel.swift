@@ -1,10 +1,21 @@
 import SwiftUI
 
 /// Inline panel for composing/editing skill content via the user's installed Claude or Codex.
+///
+/// Transcript and live agent live in `ComposeSessionStore` (keyed by the skill's file
+/// path), so closing the panel, switching skills and coming back, or the detail view
+/// recreating this view via `.id(skill.filePath)` all restore the conversation.
 struct ComposePanel: View {
     private struct DiffApplyError: Identifiable {
         let id = UUID()
         let message: String
+    }
+
+    /// An action that would throw away a diff the user hasn't reviewed yet.
+    private enum DiscardAction: Equatable {
+        case close
+        case switchAgent(previous: String?)
+        case resetContext
     }
 
     @Binding var content: String
@@ -21,13 +32,8 @@ struct ComposePanel: View {
     @State private var selectedTemplateType: WizardTemplateType
     @State private var inputText = ""
     @AppStorage("AgentSelectedId") private var selectedAgentId: String?
-    @State private var agent: (any AgentSession)?
     @State private var showingDebugLogs = false
-
-    /// Completed conversation history. Never holds in-flight messages — the agent drives live state.
-    @State private var messages: [ChatMessage] = []
-    /// True until the first successful prompt in this session.
-    @State private var isFirstTurn = true
+    @State private var agentConfig = AgentConfiguration.shared
 
     @AppStorage("AgentDebugLogging") private var debugLoggingEnabled = false
     @State private var panelHeight: CGFloat = ComposeConstants.defaultPanelHeight
@@ -36,8 +42,22 @@ struct ComposePanel: View {
     @State private var applyingDiffID: String?
     @State private var diffApplyError: DiffApplyError?
 
+    @State private var pendingDiscard: DiscardAction?
+    /// Set while we programmatically revert the agent picker so `onChange` ignores it.
+    @State private var suppressAgentChange = false
+    /// Bumped by "Show change" so the chat scrolls to the first pending diff.
+    @State private var scrollRequest = 0
+    @State private var scrollTargetId: UUID?
+
     private static let minPanelHeight: CGFloat = 160
     private static let maxPanelHeight: CGFloat = 700
+
+    /// The transcript + agent for this skill, resolved once here rather than looked up
+    /// per access: `body` reaches it through a dozen computed properties and re-runs on
+    /// every streamed delta, and the store's lookup resolves symlinks (a `realpath`
+    /// syscall) on the way in. The panel carries `.id(skill.filePath)`, so a different
+    /// file always means a new view — and therefore a fresh lookup.
+    private let session: ComposeSession
 
     init(
         content: Binding<String>,
@@ -59,15 +79,25 @@ struct ComposePanel: View {
         self.workingDirectory = workingDirectory
         self.onAccept = onAccept
         self._selectedTemplateType = State(initialValue: templateType)
+        self.session = ComposeSessionStore.shared.session(for: filePath)
     }
 
-    private var configuredAgents: [AgentID] { AgentConfiguration.shared.enabledAgents }
+    // MARK: - Session plumbing
+
+    private var agent: (any AgentSession)? { session.agent }
+    private var messages: [ChatMessage] {
+        get { session.messages }
+        nonmutating set { session.messages = newValue }
+    }
+    private var isFirstTurn: Bool { session.isFirstTurn }
+
+    private var configuredAgents: [AgentID] { agentConfig.enabledAgents }
     private var selectedAgent: AgentID? { selectedAgentId.flatMap(AgentID.init(rawValue:)) }
 
     private var isConnected: Bool { agent?.isConnected ?? false }
     private var isConnecting: Bool { agent?.isConnecting ?? false }
     private var isProcessing: Bool { agent?.isProcessing ?? false }
-    private var hasPendingDiffs: Bool { messages.contains { $0.diffs.contains { $0.status == .pending } } }
+    private var hasPendingDiffs: Bool { session.hasPendingDiffs }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -75,7 +105,7 @@ struct ComposePanel: View {
 
             if configuredAgents.isEmpty {
                 noToolsConfiguredView
-            } else if !isConnected && messages.isEmpty {
+            } else if !isConnected && !isConnecting && messages.isEmpty {
                 agentPickerEmptyState
             } else {
                 VStack(spacing: 0) {
@@ -90,15 +120,18 @@ struct ComposePanel: View {
         .frame(height: panelHeight)
         .background(Color(.windowBackgroundColor))
         .onAppear {
+            reconcileSelectionWithSession()
             if selectedAgentId == nil {
                 selectedAgentId = configuredAgents.first?.rawValue
             }
+            // A restored transcript should be ready to continue without a manual Connect.
+            if !messages.isEmpty, agent == nil {
+                connect()
+            }
+            Task { await agentConfig.refreshDetection() }
         }
-        .onDisappear {
-            forceDisconnect()
-        }
-        .onChange(of: selectedAgentId) { _, _ in
-            forceDisconnect()
+        .onChange(of: selectedAgentId) { old, new in
+            handleAgentSelectionChange(from: old, to: new)
         }
         .onChange(of: configuredAgents.map(\.rawValue)) { _, newIds in
             if selectedAgentId == nil || !newIds.contains(selectedAgentId ?? "") {
@@ -119,6 +152,33 @@ struct ComposePanel: View {
                 message: Text(error.message),
                 dismissButton: .default(Text("OK"))
             )
+        }
+        .confirmationDialog(
+            "Discard the proposed change?",
+            isPresented: Binding(
+                get: { pendingDiscard != nil },
+                set: { if !$0 { pendingDiscard = nil } }
+            ),
+            titleVisibility: .visible,
+            presenting: pendingDiscard
+        ) { action in
+            // The buttons capture `action` so they don't depend on `pendingDiscard`
+            // still being set when the dialog's dismissal races the button callback.
+            Button("Discard Change", role: .destructive) { performDiscard(action) }
+            Button("Keep Reviewing", role: .cancel) { cancelDiscard(action) }
+        } message: { action in
+            Text(discardMessage(for: action))
+        }
+    }
+
+    private func discardMessage(for action: DiscardAction) -> String {
+        switch action {
+        case .close:
+            "The agent proposed an edit you haven't accepted or rejected yet. Closing the panel rejects it."
+        case .switchAgent:
+            "The agent proposed an edit you haven't accepted or rejected yet. Switching agents rejects it."
+        case .resetContext:
+            "The agent proposed an edit you haven't accepted or rejected yet. Resetting the conversation rejects it."
         }
     }
 
@@ -248,27 +308,27 @@ struct ComposePanel: View {
         }
     }
 
-    /// Connect / Connecting / Install controls for the currently-selected agent.
+    /// Connect / Connecting / Not-found controls for the currently-selected agent.
     @ViewBuilder
     private var connectControlsForSelectedAgent: some View {
         if let agentId = selectedAgent {
             if isConnecting {
                 HStack(spacing: 6) {
                     ProgressView().controlSize(.small)
-                    Text("Connecting…")
+                    Text("Connecting to \(agentId.displayName)…")
                         .foregroundStyle(.secondary)
                 }
                 .font(.callout)
-            } else if agentId.toolSource.cliBinaryURL == nil {
-                VStack(spacing: 8) {
-                    Text("\(agentId.displayName) isn't installed.")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                    Link(destination: agentId.installURL) {
-                        Label("Install \(agentId.displayName)", systemImage: "arrow.down.circle")
+            } else if !agentConfig.isDetected(agentId) {
+                if !agentConfig.detectionComplete {
+                    HStack(spacing: 6) {
+                        ProgressView().controlSize(.small)
+                        Text("Looking for \(agentId.displayName)…")
+                            .foregroundStyle(.secondary)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.regular)
+                    .font(.callout)
+                } else {
+                    notFoundControls(for: agentId)
                 }
             } else if let error = agent?.lastError {
                 VStack(spacing: 8) {
@@ -276,16 +336,21 @@ struct ComposePanel: View {
                         .font(.callout)
                         .foregroundStyle(.red)
                         .multilineTextAlignment(.center)
-                        .lineLimit(4)
-                    Button {
-                        connect()
-                    } label: {
-                        Label("Retry", systemImage: "arrow.clockwise")
+                        .lineLimit(6)
+                        .textSelection(.enabled)
+                    HStack(spacing: 8) {
+                        Button {
+                            connect()
+                        } label: {
+                            Label("Retry", systemImage: "arrow.clockwise")
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.regular)
+                        Button("Agent Settings") { openSettings() }
+                            .controlSize(.regular)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.regular)
                 }
-                .frame(maxWidth: 360)
+                .frame(maxWidth: 420)
             } else {
                 Button {
                     connect()
@@ -296,6 +361,37 @@ struct ComposePanel: View {
                 .controlSize(.regular)
             }
         }
+    }
+
+    /// Shown when the binary can't be located: explain, offer to pick it, link to Settings.
+    @ViewBuilder
+    private func notFoundControls(for agentId: AgentID) -> some View {
+        VStack(spacing: 8) {
+            Text("\(agentId.displayName) not found on PATH")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+            Text("SkillKit checked your login shell's PATH and the usual install folders.")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+                .multilineTextAlignment(.center)
+            HStack(spacing: 8) {
+                Button {
+                    chooseBinary(for: agentId)
+                } label: {
+                    Label("Choose binary…", systemImage: "folder")
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.regular)
+                Link(destination: agentId.installURL) {
+                    Label("Install", systemImage: "arrow.down.circle")
+                }
+                .controlSize(.regular)
+            }
+            Button("Open Agent Settings") { openSettings() }
+                .buttonStyle(.link)
+                .font(.caption)
+        }
+        .frame(maxWidth: 420)
     }
 
     private var noToolsConfiguredView: some View {
@@ -309,23 +405,35 @@ struct ComposePanel: View {
                     .foregroundStyle(.secondary)
 
                 VStack(spacing: 0) {
-                    ForEach(AgentConfiguration.shared.supported) { agentId in
+                    ForEach(agentConfig.supported) { agentId in
                         HStack(spacing: 10) {
                             VStack(alignment: .leading, spacing: 1) {
                                 Text(agentId.displayName)
                                     .font(.callout.weight(.medium))
-                                Text(agentId.description)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(1)
+                                if agentConfig.isDetected(agentId) || !agentConfig.detectionComplete {
+                                    Text(agentId.description)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                } else {
+                                    Text("Not found on PATH")
+                                        .font(.caption)
+                                        .foregroundStyle(.orange)
+                                }
                             }
                             Spacer()
-                            Toggle("", isOn: Binding(
-                                get: { AgentConfiguration.shared.isEnabled(agentId) },
-                                set: { AgentConfiguration.shared.setEnabled(agentId, $0) }
-                            ))
-                            .labelsHidden()
-                            .disabled(agentId.toolSource.cliBinaryURL == nil)
+                            if agentConfig.isDetected(agentId) {
+                                Toggle("", isOn: Binding(
+                                    get: { agentConfig.isEnabled(agentId) },
+                                    set: { agentConfig.setEnabled(agentId, $0) }
+                                ))
+                                .labelsHidden()
+                            } else if !agentConfig.detectionComplete {
+                                ProgressView().controlSize(.small)
+                            } else {
+                                Button("Choose binary…") { chooseBinary(for: agentId) }
+                                    .controlSize(.small)
+                            }
                         }
                         .padding(.horizontal, 12)
                         .padding(.vertical, 8)
@@ -333,7 +441,11 @@ struct ComposePanel: View {
                 }
                 .background(Color.primary.opacity(0.05))
                 .clipShape(RoundedRectangle(cornerRadius: 8))
-                .frame(maxWidth: 320)
+                .frame(maxWidth: 360)
+
+                Button("Open Agent Settings") { openSettings() }
+                    .buttonStyle(.link)
+                    .font(.caption)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
@@ -344,7 +456,7 @@ struct ComposePanel: View {
 
     private var topBar: some View {
         HStack(spacing: 8) {
-            // LEFT: Tool picker + connection + debug
+            // LEFT: Tool picker + connection + reset + logs
             HStack(spacing: 8) {
                 Picker("", selection: $selectedAgentId) {
                     Text("Select...").tag(nil as String?)
@@ -356,6 +468,7 @@ struct ComposePanel: View {
                 .frame(width: 120)
 
                 connectionButton
+                resetContextButton
                 debugLogButton
             }
 
@@ -371,7 +484,8 @@ struct ComposePanel: View {
                         .foregroundStyle(.red)
                         .lineLimit(1)
                 }
-                .frame(maxWidth: 200)
+                .frame(maxWidth: 260)
+                .help(error)
             }
 
             closeButton
@@ -400,6 +514,9 @@ struct ComposePanel: View {
                         if messages.isEmpty && !isProcessing {
                             if isConnected {
                                 connectedPlaceholder
+                                    .frame(height: geo.size.height - 24)
+                            } else if isConnecting {
+                                connectingPlaceholder
                                     .frame(height: geo.size.height - 24)
                             } else {
                                 disconnectedPlaceholder
@@ -434,6 +551,11 @@ struct ComposePanel: View {
                         withAnimation { proxy.scrollTo("live-assistant", anchor: .bottom) }
                     }
                 }
+                .onChange(of: scrollRequest) { _, _ in
+                    if let target = scrollTargetId {
+                        withAnimation { proxy.scrollTo(target, anchor: .top) }
+                    }
+                }
             }
         }
     }
@@ -453,6 +575,16 @@ struct ComposePanel: View {
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.regular)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var connectingPlaceholder: some View {
+        VStack(spacing: 8) {
+            ProgressView().controlSize(.small)
+            Text("Connecting to \(selectedAgent?.displayName ?? "agent")…")
+                .font(.callout)
+                .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -545,13 +677,6 @@ struct ComposePanel: View {
         }
     }
 
-    private func liveStatusText(activity: String?, waitingOnUser: Bool) -> String {
-        if waitingOnUser {
-            return "Waiting for your approval"
-        }
-        return activity ?? "Working…"
-    }
-
     /// Ticks every second while a turn is in flight so the elapsed-time label updates.
     @ViewBuilder
     private var elapsedTurnLabel: some View {
@@ -617,6 +742,7 @@ struct ComposePanel: View {
             }
             ForEach(message.diffs.indices, id: \.self) { i in
                 diffCard(messageId: message.id, diffIndex: i, diff: message.diffs[i])
+                    .id(diffCardID(messageId: message.id, diffIndex: i))
             }
         }
     }
@@ -711,8 +837,38 @@ struct ComposePanel: View {
     }
 
     private var inputArea: some View {
+        VStack(spacing: 0) {
+            if hasPendingDiffs {
+                pendingDiffBanner
+                Divider()
+            }
+            composer
+        }
+        .background(Color(.controlBackgroundColor))
+    }
+
+    /// Explains why the composer is locked while a proposed change awaits review.
+    private var pendingDiffBanner: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "doc.text.magnifyingglass")
+                .foregroundStyle(.orange)
+            Text("Review the proposed change to continue")
+                .font(.callout)
+                .foregroundStyle(.primary)
+            Spacer()
+            Button("Show change") {
+                showFirstPendingDiff()
+            }
+            .controlSize(.small)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(Color.orange.opacity(0.10))
+    }
+
+    private var composer: some View {
         HStack(alignment: .bottom, spacing: 8) {
-            TextField(isFirstTurn ? "Enter instructions…" : "Follow up…", text: $inputText, axis: .vertical)
+            TextField(composerPlaceholder, text: $inputText, axis: .vertical)
                 .font(.body)
                 .textFieldStyle(.plain)
                 .lineLimit(1...4)
@@ -756,13 +912,18 @@ struct ComposePanel: View {
                 .buttonStyle(.plain)
                 .disabled(sendDisabled)
                 .keyboardShortcut(.return, modifiers: .command)
-                .help("Send (⌘↩)")
+                .help(hasPendingDiffs ? "Accept or reject the proposed change first" : "Send (⌘↩)")
             }
         }
         .fixedSize(horizontal: false, vertical: true)
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .background(Color(.controlBackgroundColor))
+    }
+
+    private var composerPlaceholder: String {
+        if hasPendingDiffs { return "Accept or reject the change above to continue…" }
+        if !isConnected { return isConnecting ? "Connecting…" : "Connect to start…" }
+        return isFirstTurn ? "Enter instructions…" : "Follow up…"
     }
 
     private var resizeHandle: some View {
@@ -803,7 +964,7 @@ struct ComposePanel: View {
     private var connectionButton: some View {
         Button {
             if isConnected || isConnecting {
-                forceDisconnect()
+                session.detachAgent()
             } else {
                 connect()
             }
@@ -823,10 +984,25 @@ struct ComposePanel: View {
         .disabled(selectedAgentId == nil)
     }
 
+    @ViewBuilder
+    private var resetContextButton: some View {
+        if !messages.isEmpty {
+            Button {
+                requestResetContext()
+            } label: {
+                Image(systemName: "eraser.line.dashed")
+                    .frame(width: 20, height: 20)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .disabled(isProcessing)
+            .help("Reset context — clear this conversation and start fresh")
+        }
+    }
+
     private var closeButton: some View {
         Button {
-            forceDisconnect()
-            isVisible = false
+            requestClose()
         } label: {
             Image(systemName: "xmark")
                 .frame(width: 28, height: 28)
@@ -836,32 +1012,57 @@ struct ComposePanel: View {
         .foregroundStyle(.secondary)
     }
 
-    @ViewBuilder
     private var debugLogButton: some View {
-        #if DEBUG
-        if debugLoggingEnabled {
-            Button {
-                showingDebugLogs = true
-            } label: {
-                Image(systemName: "ladybug")
-                    .foregroundStyle(.orange)
-            }
-            .buttonStyle(.plain)
-            .help("View Agent Logs")
-            .popover(isPresented: $showingDebugLogs) {
-                AgentLogViewer()
-                    .frame(width: 600, height: 400)
-            }
+        Button {
+            showingDebugLogs = true
+        } label: {
+            Image(systemName: debugLoggingEnabled ? "ladybug.fill" : "ladybug")
+                .foregroundStyle(debugLoggingEnabled ? .orange : .secondary)
+                .frame(width: 20, height: 20)
         }
-        #endif
+        .buttonStyle(.plain)
+        .help(debugLoggingEnabled ? "View Agent Logs (verbose logging on)" : "View Agent Logs")
+        .popover(isPresented: $showingDebugLogs) {
+            AgentLogViewer()
+                .frame(width: 600, height: 400)
+        }
     }
 
     // MARK: - Actions
 
+    /// If this skill already has a live agent, make the picker reflect it.
+    private func reconcileSelectionWithSession() {
+        if let live = session.agentId, session.agent != nil, live != selectedAgentId,
+           configuredAgents.contains(where: { $0.rawValue == live }) {
+            suppressAgentChange = true
+            selectedAgentId = live
+        }
+    }
+
+    private func handleAgentSelectionChange(from old: String?, to new: String?) {
+        if suppressAgentChange {
+            suppressAgentChange = false
+            return
+        }
+        guard old != new, session.agent != nil, session.agentId != new else { return }
+        if hasPendingDiffs {
+            pendingDiscard = .switchAgent(previous: old)
+        } else {
+            session.detachAgent()
+        }
+    }
+
     private func connect() {
         guard let agentId = selectedAgent, !isConnected, !isConnecting else { return }
-        let client = AgentFactory.make(for: agentId)
-        agent = client  // agent's @Observable state drives the UI from this point
+        let client: any AgentSession
+        if let existing = session.agent, session.agentId == agentId.rawValue {
+            client = existing
+        } else {
+            session.detachAgent()
+            client = AgentFactory.make(for: agentId)
+            session.agent = client  // agent's @Observable state drives the UI from this point
+            session.agentId = agentId.rawValue
+        }
         let systemPrompt = TemplateManager.shared.systemPrompt(
             for: selectedTemplateType,
             skillName: skillName,
@@ -872,13 +1073,89 @@ struct ComposePanel: View {
         client.startConnect(workingDirectory: workingDirectory, systemPrompt: systemPrompt)
     }
 
+    private func chooseBinary(for agentId: AgentID) {
+        guard let url = AgentBinaryChooser.choose(for: agentId) else { return }
+        agentConfig.setOverride(url, for: agentId)
+        if !agentConfig.isEnabled(agentId) {
+            agentConfig.setEnabled(agentId, true)
+        }
+        if selectedAgentId == nil {
+            selectedAgentId = agentId.rawValue
+        }
+    }
+
+    private func requestClose() {
+        if hasPendingDiffs {
+            pendingDiscard = .close
+        } else {
+            isVisible = false
+        }
+    }
+
+    private func requestResetContext() {
+        if hasPendingDiffs {
+            pendingDiscard = .resetContext
+        } else {
+            session.clearHistory()
+        }
+    }
+
+    private func performDiscard(_ action: DiscardAction) {
+        pendingDiscard = nil
+        rejectAllPendingDiffs()
+        switch action {
+        case .close:
+            isVisible = false
+        case .switchAgent:
+            session.detachAgent()
+        case .resetContext:
+            session.clearHistory()
+        }
+    }
+
+    private func cancelDiscard(_ action: DiscardAction) {
+        pendingDiscard = nil
+        if case .switchAgent(let previous) = action, previous != selectedAgentId {
+            suppressAgentChange = true
+            selectedAgentId = previous
+        }
+    }
+
+    private func rejectAllPendingDiffs() {
+        for (m, message) in messages.enumerated() {
+            for (d, diff) in message.diffs.enumerated() where diff.status == .pending {
+                rejectDiff(messageId: messages[m].id, diffIndex: d)
+            }
+        }
+    }
+
+    private func showFirstPendingDiff() {
+        for message in messages {
+            if let i = message.diffs.firstIndex(where: { $0.status == .pending }) {
+                scrollTargetId = diffCardID(messageId: message.id, diffIndex: i)
+                scrollRequest += 1
+                return
+            }
+        }
+    }
+
+    /// Stable identity for a diff card so "Show change" can scroll to it. Derived from the
+    /// message UUID so it survives view recreation.
+    private func diffCardID(messageId: UUID, diffIndex: Int) -> UUID {
+        var bytes = messageId.uuid
+        bytes.15 = UInt8(truncatingIfNeeded: Int(bytes.15) &+ diffIndex &+ 1)
+        return UUID(uuid: bytes)
+    }
+
     private func sendMessage() {
         guard let client = agent else { return }
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
 
         inputText = ""
-        messages.append(ChatMessage(role: .user, text: text))
+        let history = session.conversationTurns
+        let session = self.session
+        session.messages.append(ChatMessage(role: .user, text: text))
 
         let assistantId = UUID()
 
@@ -890,23 +1167,23 @@ struct ComposePanel: View {
                 let original = content
                 client.primeDeferredContent(for: fp, content: original)
                 // The agent owns prompt construction (system prompt + file content +
-                // user request). We just hand it the raw user text.
-                try await client.prompt(text)
-                isFirstTurn = false
+                // conversation so far + user request). We just hand it the raw user text.
+                try await client.prompt(text, history: history)
+                session.isFirstTurn = false
 
                 let raw = client.responseText
                 let processed = client.conversationalText(from: raw)
                 let finalText = processed.isEmpty ? raw : processed
-                agentLog.info("Compose: turn done — raw=\(raw.count) chars, thought=\(client.thoughtText.count) chars")
+                agentLog.info("Compose: turn done — raw=\(raw.count) chars, thought=\(client.thoughtText.count) chars, nativeSession=\(client.hasNativeSession)")
 
-                messages.append(ChatMessage(id: assistantId, role: .assistant, text: finalText, thoughtText: client.thoughtText))
+                session.messages.append(ChatMessage(id: assistantId, role: .assistant, text: finalText, thoughtText: client.thoughtText))
                 await handleWrites(client: client, messageId: assistantId, filePath: fp, originalContent: original)
             } catch is CancellationError {
                 client.clearPendingWrites()
-                messages.append(ChatMessage(id: assistantId, role: .assistant, text: "Stopped."))
+                session.messages.append(ChatMessage(id: assistantId, role: .assistant, text: "Stopped."))
             } catch {
                 client.clearPendingWrites()
-                messages.append(ChatMessage(id: assistantId, role: .assistant, text: error.localizedDescription, isError: true))
+                session.messages.append(ChatMessage(id: assistantId, role: .assistant, text: error.localizedDescription, isError: true))
             }
         }
     }
@@ -1006,14 +1283,14 @@ struct ComposePanel: View {
                 )
             )
         }
-        messages[idx].diffs = diffs
+        session.messages[idx].diffs = diffs
 
         if autoAccept {
             // Bypass mode: auto-accept all diffs. Disk writes already happened in handleFileWriteRequest.
             let resolvedFilePath = resolvedPath(filePath)
-            for i in messages[idx].diffs.indices {
-                messages[idx].diffs[i].status = .accepted
-                let diff = messages[idx].diffs[i]
+            for i in session.messages[idx].diffs.indices {
+                session.messages[idx].diffs[i].status = .accepted
+                let diff = session.messages[idx].diffs[i]
                 if resolvedPath(diff.path) == resolvedFilePath {
                     content = diff.proposed
                     onAccept()
@@ -1027,7 +1304,7 @@ struct ComposePanel: View {
               diffIndex < messages[msgIdx].diffs.count else { return }
         let diff = messages[msgIdx].diffs[diffIndex]
         if resolvedPath(diff.path) == resolvedPath(filePath) {
-            messages[msgIdx].diffs[diffIndex].status = .accepted
+            session.messages[msgIdx].diffs[diffIndex].status = .accepted
             // Currently-open file: update editor binding, onAccept() persists to disk.
             // Direct-CLI agents already wrote to disk; skip re-persist to avoid a redundant write.
             content = diff.proposed
@@ -1036,20 +1313,21 @@ struct ComposePanel: View {
             }
         } else if diff.agentDidWrite {
             // Direct-CLI: file is already at proposed content on disk. Just mark accepted.
-            messages[msgIdx].diffs[diffIndex].status = .accepted
+            session.messages[msgIdx].diffs[diffIndex].status = .accepted
         } else {
             let actionID = diffActionID(messageId: messageId, diffIndex: diffIndex)
             guard applyingDiffID != actionID else { return }
             applyingDiffID = actionID
+            let session = self.session
             Task {
                 do {
                     try await Self.persistAcceptedDiff(diff)
-                    guard let updatedMsgIdx = messages.firstIndex(where: { $0.id == messageId }),
-                          diffIndex < messages[updatedMsgIdx].diffs.count else {
+                    guard let updatedMsgIdx = session.messages.firstIndex(where: { $0.id == messageId }),
+                          diffIndex < session.messages[updatedMsgIdx].diffs.count else {
                         applyingDiffID = nil
                         return
                     }
-                    messages[updatedMsgIdx].diffs[diffIndex].status = .accepted
+                    session.messages[updatedMsgIdx].diffs[diffIndex].status = .accepted
                 } catch {
                     let fileName = URL(fileURLWithPath: diff.path).lastPathComponent
                     AppLogger.fileIO.error("Deferred diff apply failed for \(diff.path): \(error.localizedDescription)")
@@ -1066,7 +1344,7 @@ struct ComposePanel: View {
         guard let msgIdx = messages.firstIndex(where: { $0.id == messageId }),
               diffIndex < messages[msgIdx].diffs.count else { return }
         let diff = messages[msgIdx].diffs[diffIndex]
-        messages[msgIdx].diffs[diffIndex].status = .rejected
+        session.messages[msgIdx].diffs[diffIndex].status = .rejected
 
         // Direct-CLI agents (Claude, Codex) already wrote to disk by the time the user sees
         // the diff. Revert from the snapshot we captured pre-write.
@@ -1120,17 +1398,6 @@ struct ComposePanel: View {
             }
             try diff.proposed.write(to: url, atomically: true, encoding: .utf8)
         }.value
-    }
-
-    private func forceDisconnect() {
-        let client = agent
-        agent = nil
-        isFirstTurn = true
-        messages = []
-        applyingDiffID = nil
-        Task {
-            await client?.disconnect()
-        }
     }
 }
 

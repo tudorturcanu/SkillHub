@@ -10,6 +10,10 @@ struct ContentView: View {
     @State private var fileWatcher: FileWatcher?
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var showingAutosaveSnackbar = false
+    @State private var isSearchPresented = false
+    @State private var didRestoreSession = false
+    /// A file the user opened from Finder that isn't in the library yet; selected once it appears.
+    @State private var pendingOpenPath: String?
 
     var body: some View {
         @Bindable var appState = appState
@@ -33,7 +37,7 @@ struct ContentView: View {
                 } content: {
                     SkillListView()
                 } detail: {
-                    if let skill = appState.selectedSkill {
+                    if let skill = appState.selectedSkill, !skill.isDeleted {
                         SkillDetailView(skill: skill)
                     } else {
                         ContentUnavailableView(
@@ -43,7 +47,7 @@ struct ContentView: View {
                         )
                     }
                 }
-                .searchable(text: $appState.searchText, prompt: "Search skills...")
+                .searchable(text: $appState.searchText, isPresented: $isSearchPresented, prompt: searchPrompt)
                 .onSubmit(of: .search) {
                     appState.rememberCurrentSearch()
                 }
@@ -60,18 +64,29 @@ struct ContentView: View {
         .animation(.snappy(duration: 0.28), value: showingAutosaveSnackbar)
         .onAppear {
             startScanning()
+            restoreSessionIfNeeded()
             showAutosaveSnackbarIfNeeded()
+        }
+        .onOpenURL { url in
+            open(fileURL: url)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .focusLibrarySearch)) { _ in
+            if appState.sidebarFilter == .dashboard || appState.sidebarFilter == .discover {
+                appState.sidebarFilter = .allSkills
+            }
+            isSearchPresented = true
+        }
+        .onChange(of: appState.selectedSkill) {
+            appState.persistSession()
         }
         .sheet(isPresented: $appState.showingNewSkillSheet) {
             NewSkillSheet()
-        }
-        .sheet(isPresented: $appState.showingRegistrySheet) {
-            RegistrySheet()
         }
         .sheet(isPresented: $appState.showingDuplicateSkillSheet) {
             DuplicateSkillSheet()
         }
         .onChange(of: appState.sidebarFilter) {
+            appState.persistSession()
             appState.toolKindFilter = nil
             if appState.sidebarFilter == .recent {
                 appState.skillSortOption = .lastOpened
@@ -82,12 +97,86 @@ struct ContentView: View {
         }
         .onChange(of: skills) {
             setupFileWatcher()
+            selectPendingOpenPathIfPossible()
         }
         .frame(minWidth: 900, minHeight: 500)
         .onReceive(NotificationCenter.default.publisher(for: .customScanPathsChanged)) { _ in
             scanner?.scanAll()
             setupFileWatcher()
         }
+    }
+
+    private var searchPrompt: String {
+        switch appState.sidebarFilter {
+        case .allRules: "Search rules..."
+        case .collection(let name): "Search \(name)..."
+        case .server: "Search remote skills..."
+        default: "Search skills and rules..."
+        }
+    }
+
+    // MARK: - Session restoration
+
+    private func restoreSessionIfNeeded() {
+        guard !didRestoreSession else { return }
+        didRestoreSession = true
+
+        if let filter = AppState.persistedFilter {
+            appState.sidebarFilter = filter
+        }
+        // Runs after the startup scan has dropped rows whose files are gone,
+        // so a skill deleted while the app was closed is never selected.
+        if let path = AppState.persistedSkillPath,
+           let skill = skills.first(where: { $0.filePath == path }),
+           !skill.isDeleted {
+            appState.selectedSkill = skill
+        }
+    }
+
+    // MARK: - Opening files from Finder
+
+    private func open(fileURL url: URL) {
+        guard url.isFileURL else { return }
+        let resolved = url.resolvingSymlinksInPath().path
+
+        if let existing = skills.first(where: { $0.filePath == resolved || $0.resolvedPath == resolved || $0.filePath == url.path }) {
+            select(existing)
+            return
+        }
+
+        // Grant sandbox access to the containing folder and add it to the scan paths.
+        let directory = url.deletingLastPathComponent()
+        let scanDirectory = directory.lastPathComponent.lowercased() == "skills"
+            ? directory
+            : directory.deletingLastPathComponent().lastPathComponent.lowercased() == "skills"
+                ? directory.deletingLastPathComponent()
+                : directory
+        SandboxBookmarkManager.saveBookmark(for: scanDirectory)
+
+        var customPaths = UserDefaults.standard.stringArray(forKey: "customScanPaths") ?? []
+        if !customPaths.contains(scanDirectory.path) {
+            customPaths.append(scanDirectory.path)
+            UserDefaults.standard.set(customPaths, forKey: "customScanPaths")
+        }
+
+        pendingOpenPath = resolved
+        AppLogger.ui.notice("Opened \(url.path) from Finder; scanning \(scanDirectory.path)")
+        NotificationCenter.default.post(name: .customScanPathsChanged, object: nil)
+    }
+
+    private func selectPendingOpenPathIfPossible() {
+        guard let pending = pendingOpenPath else { return }
+        guard let skill = skills.first(where: {
+            $0.filePath == pending || $0.resolvedPath == pending ||
+            URL(fileURLWithPath: $0.filePath).resolvingSymlinksInPath().path == pending
+        }) else { return }
+        pendingOpenPath = nil
+        select(skill)
+    }
+
+    private func select(_ skill: Skill) {
+        appState.sidebarFilter = skill.itemKind == .rule ? .allRules : .allSkills
+        appState.selectedSkill = skill
     }
 
     private func showAutosaveSnackbarIfNeeded() {
@@ -107,6 +196,7 @@ struct ContentView: View {
         AppLogger.ui.notice("App started, beginning initial scan")
         let scanner = SkillScanner(modelContext: modelContext)
         self.scanner = scanner
+        scanner.makeActive()
         scanner.removeDeletedSkills()
         scanner.scanAll()
 
@@ -155,16 +245,14 @@ struct ContentView: View {
         }
         allPaths = Array(Set(allPaths)).sorted()
 
-        // Stop existing watcher first
-        self.fileWatcher?.stopAll()
-
-        let watcher = FileWatcher { _ in
-            scanner.scanAll()
-            scanner.removeDeletedSkills()
+        // Reuse the existing watcher so it only opens/closes the descriptors that
+        // actually changed, and so a rescan mid-edit doesn't tear down every watch.
+        let watcher = self.fileWatcher ?? FileWatcher(coalesceInterval: 0.3) { changedPaths in
+            scanner.rescan(directories: Array(changedPaths))
         }
         watcher.watchDirectories(allPaths)
         self.fileWatcher = watcher
-        AppLogger.ui.notice("File watchers active on \(allPaths.count) directories: \(allPaths)")
+        AppLogger.ui.notice("File watchers active on \(allPaths.count) directories")
     }
 }
 

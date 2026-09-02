@@ -82,6 +82,11 @@ enum SecurityCategory: String {
 
 /// One concrete detection signature.
 struct SecurityRule {
+    /// Extra check run on a regex hit. Return `false` to drop the match — used
+    /// where a regex alone can't express the condition (e.g. "is this `rm -rf`
+    /// target actually dangerous?").
+    typealias Validator = (_ line: String, _ match: NSTextCheckingResult) -> Bool
+
     let id: String            // e.g. "SC2", mirrors SkillSpector IDs where applicable
     let category: SecurityCategory
     let severity: SecuritySeverity
@@ -90,13 +95,19 @@ struct SecurityRule {
     /// `true` when this is a regex approximation of an AST/taint/YARA rule
     /// rather than a faithful static signature.
     let heuristic: Bool
+    let validator: Validator?
+    /// If any of these rules also match the same line, this rule is dropped
+    /// (e.g. plain `sudo` is superseded by `sudo` + destructive command).
+    let shadowedBy: Set<String>
 
     init(_ id: String,
          _ category: SecurityCategory,
          _ severity: SecuritySeverity,
          _ title: String,
          _ regex: String,
-         heuristic: Bool = false) {
+         heuristic: Bool = false,
+         shadowedBy: Set<String> = [],
+         validator: Validator? = nil) {
         self.id = id
         self.category = category
         self.severity = severity
@@ -107,6 +118,8 @@ struct SecurityRule {
             options: [.caseInsensitive]
         )
         self.heuristic = heuristic
+        self.shadowedBy = shadowedBy
+        self.validator = validator
     }
 }
 
@@ -117,8 +130,40 @@ struct SecurityFinding: Identifiable, Hashable {
     let severity: SecuritySeverity
     let title: String
     let heuristic: Bool
+    /// 1-based line in `file` (or in the main skill file when `file` is nil).
+    /// Scans run over the full on-disk text, frontmatter included, so this
+    /// matches the editor's gutter.
     let lineNumber: Int
     let snippet: String
+    /// Skill-relative path of a bundled file (`scripts/run.sh`). `nil` means
+    /// the main skill file.
+    let file: String?
+
+    init(ruleID: String,
+         category: SecurityCategory,
+         severity: SecuritySeverity,
+         title: String,
+         heuristic: Bool,
+         lineNumber: Int,
+         snippet: String,
+         file: String? = nil) {
+        self.ruleID = ruleID
+        self.category = category
+        self.severity = severity
+        self.title = title
+        self.heuristic = heuristic
+        self.lineNumber = lineNumber
+        self.snippet = snippet
+        self.file = file
+    }
+
+    var isInMainFile: Bool { file == nil }
+
+    /// "line 12" or "scripts/run.sh:12"
+    var locationText: String {
+        if let file { return "\(file):\(lineNumber)" }
+        return "line \(lineNumber)"
+    }
 
     static func == (lhs: SecurityFinding, rhs: SecurityFinding) -> Bool {
         lhs.id == rhs.id
@@ -130,6 +175,10 @@ struct SecurityScanResult {
     let findings: [SecurityFinding]
     /// 0 (clean) – 100 (severe). Mirrors SkillSpector's risk score.
     let riskScore: Int
+    /// Findings the user chose to ignore for this skill. Excluded from
+    /// `findings`, the score, and every summary — kept so the UI can offer
+    /// to un-ignore them.
+    var suppressedFindings: [SecurityFinding] = []
 
     var isClean: Bool { findings.isEmpty }
 
@@ -171,6 +220,9 @@ struct SecurityScanResult {
         guard let finding = findings.sorted(by: { $0.severity > $1.severity }).first else {
             return "No risky patterns detected"
         }
+        if let file = finding.file {
+            return "\(finding.title) in \(file) line \(finding.lineNumber)"
+        }
         return "\(finding.title) on line \(finding.lineNumber)"
     }
 
@@ -203,6 +255,33 @@ struct SecurityScanResult {
         guard !isClean else { return "No risky patterns were detected." }
         return "Score is based on severity weights: critical 40, high 20, medium 8, low 3."
     }
+
+    // MARK: Derived results
+
+    /// Same scan with the given rule IDs moved into `suppressedFindings`.
+    /// The score is recomputed from what remains.
+    func excluding(ruleIDs: Set<String>) -> SecurityScanResult {
+        guard !ruleIDs.isEmpty else { return self }
+        let all = findings + suppressedFindings
+        let kept = all.filter { !ruleIDs.contains($0.ruleID) }
+        let dropped = all.filter { ruleIDs.contains($0.ruleID) }
+        return SecurityScanResult(
+            findings: kept,
+            riskScore: SecurityScanner.score(for: kept),
+            suppressedFindings: dropped
+        )
+    }
+
+    /// Merges several per-file results into one (score recomputed over the union).
+    static func combining(_ results: [SecurityScanResult]) -> SecurityScanResult {
+        let findings = results.flatMap(\.findings)
+        let suppressed = results.flatMap(\.suppressedFindings)
+        return SecurityScanResult(
+            findings: findings,
+            riskScore: SecurityScanner.score(for: findings),
+            suppressedFindings: suppressed
+        )
+    }
 }
 
 enum SecurityScanner {
@@ -217,8 +296,10 @@ enum SecurityScanner {
               #"(disregard|bypass|override)\s+(your\s+)?(safety|security|guard|content)\s*(rails|constraints|guidelines|policies)?"#),
         .init("P6", .promptInjection, .high, "System-prompt extraction",
               #"(reveal|print|repeat|show|leak)\s+(your\s+)?(system\s+prompt|initial\s+instructions|developer\s+message)"#),
+        // Only comments that *instruct* the model. "<!-- do not edit: generated -->"
+        // or "<!-- TODO -->" are ordinary authoring comments.
         .init("TP1", .toolPoisoning, .high, "Hidden instructions in comment",
-              #"<!--[^>]*\b(ignore|system|instruction|secret|exfiltrat|do not)\b[^>]*-->"#),
+              #"<!--(?:(?!-->).)*\b(?:ignore|override|disregard|system\s+prompt|you\s+must|you\s+should\s+(?:now|always)|new\s+instructions?|secretly|exfiltrat\w*|do\s+not\s+(?:tell|reveal|mention|disclose|inform|warn)|always\s+(?:respond|reply|say|answer)|(?:ai|assistant|model|agent)s?\s*:\s)\b(?:(?!-->).)*-->"#),
         .init("TP2", .toolPoisoning, .high, "Zero-width / RTL deception characters",
               #"[\x{200B}\x{200C}\x{200D}\x{202A}-\x{202E}\x{2066}-\x{2069}\x{FEFF}]"#),
 
@@ -247,10 +328,36 @@ enum SecurityScanner {
               #"[A-Za-z0-9+/]{120,}={0,2}"#),
 
         // --- Privilege Escalation ---
-        .init("PE2", .privilegeEscalation, .medium, "Privileged execution (sudo/root)",
-              #"\bsudo\s+\S|chmod\s+\+s|setuid\s*\("#),
+        // Plain sudo is common in install docs ("sudo npm install -g …"); it only
+        // becomes interesting when paired with something destructive (PE2b).
+        .init("PE2", .privilegeEscalation, .low, "Privileged execution (sudo)",
+              #"\bsudo\s+\S"#, shadowedBy: ["PE2b"]),
+        .init("PE2b", .privilegeEscalation, .high, "Privileged destructive command (sudo)",
+              #"\bsudo\s+[^\n]*\b(?:rm\s+-[a-z]*r|mkfs|dd\s+if=|chmod\s+(?:-R\s+)?[0-7]*777|chown\s+-R|launchctl\s+(?:load|bootstrap)|crontab|visudo|passwd|useradd|dscl|systemctl|kextload|csrutil|spctl|nvram|diskutil\s+(?:erase|partition)|tee\s+(?:-a\s+)?/etc/|>\s*/etc/)"#),
+        .init("PE2c", .privilegeEscalation, .medium, "Sets setuid bit",
+              #"chmod\s+[ugoa]*\+s\b|\bsetuid\s*\("#),
+        // `rm -rf` is only destructive when it points at /, ~, $HOME, a glob,
+        // or an absolute path outside the temp dirs. Relative build dirs and
+        // /tmp/... are routine.
         .init("DESTROY", .privilegeEscalation, .high, "Destructive filesystem command",
-              #"rm\s+-rf?\s+(/|~|\$HOME|\*)|mkfs\.|dd\s+if=.*of=/dev/"#),
+              #"\brm\s+((?:-{1,2}[a-z][a-z-]*\s+)+)([^\n;|&]*)"#,
+              validator: { line, match in
+                  guard let flagsRange = Range(match.range(at: 1), in: line),
+                        let targetsRange = Range(match.range(at: 2), in: line) else { return false }
+                  let flags = line[flagsRange].split(whereSeparator: \.isWhitespace).map(String.init)
+                  let recursive = flags.contains { flag in
+                      flag.lowercased() == "--recursive"
+                          || (flag.hasPrefix("-") && !flag.hasPrefix("--") && flag.lowercased().contains("r"))
+                  }
+                  guard recursive else { return false }
+                  return line[targetsRange]
+                      .split(whereSeparator: \.isWhitespace)
+                      .map(String.init)
+                      .filter { !$0.hasPrefix("-") }
+                      .contains(where: isDestructiveRemoveTarget)
+              }),
+        .init("DESTROY_DISK", .privilegeEscalation, .high, "Destructive disk command",
+              #"\bmkfs\.|\bdd\s+if=.*of=/dev/"#),
 
         // --- Credential Access ---
         .init("PE3", .credentialAccess, .high, "Reads SSH keys / credentials",
@@ -274,15 +381,51 @@ enum SecurityScanner {
         // --- Data Exfiltration ---
         .init("E1", .dataExfiltration, .medium, "POST to external endpoint",
               #"(requests\.post|fetch|axios\.post|http\.client|urllib\.request)\b[^\n]*https?://"#, heuristic: true),
+        // netcat must be a whole word *and* sit where a command would: line
+        // start, after a pipe/`;`/`&&`, or inside `$(…)`/backticks. "sync 2024"
+        // is not netcat.
         .init("E1b", .dataExfiltration, .high, "Pipes data to remote netcat / curl upload",
-              #"(nc|ncat|netcat)\s+[^\n]*\d{2,5}|curl\b[^\n]*(--data|-d|-T|--upload-file)\b[^\n]*https?://"#),
+              #"(?:^\s*(?:\$\s+)?|[|;&`(]\s*)(?:sudo\s+)?(?:nc|ncat|netcat)\b\s+[^\n]*\b\d{2,5}\b|\bcurl\b[^\n]*(?:--data\S*|--upload-file|(?<=\s)-[dTF])\b[^\n]*https?://"#),
 
         // --- Persistence ---
-        .init("RA2", .persistence, .high, "Installs persistence (cron/launchd/startup)",
-              #"(crontab\s+-|/etc/cron|LaunchAgents|LaunchDaemons|\.bashrc|\.zshrc|\.profile|rc\.local)\b"#, heuristic: true),
+        .init("RA2", .persistence, .high, "Installs persistence (cron/launchd)",
+              #"\bcrontab\s+-(?!l\b)|\|\s*crontab\b|/etc/cron\w*|\b(?:cp|mv|ln|tee|install|cat)\s[^\n]*Launch(?:Agents|Daemons)|>\s*[^\n]*Launch(?:Agents|Daemons)|\blaunchctl\s+(?:load|bootstrap|enable|submit)\b"#,
+              heuristic: true),
+        // Only *writes* to shell startup files count. "add this to your ~/.zshrc"
+        // is documentation, `echo … >> ~/.zshrc` is persistence.
+        .init("RA2b", .persistence, .high, "Writes to shell startup file",
+              #"(?:>>?\s*|\btee\s+(?:-a\s+)?|\bsed\s+-i\S*\s+[^\n]*?)["']?[^\s"']*(?:\.(?:bashrc|zshrc|profile|bash_profile|zprofile|zshenv|zlogin)|/etc/rc\.local|/etc/profile)\b"#,
+              heuristic: true),
         .init("RA1", .codeExecution, .critical, "Self-modifying code",
               #"open\s*\(\s*__file__|with\s+open\([^)]*__file__"#, heuristic: true),
     ]
+
+    /// Targets that make a recursive `rm` dangerous: the root, the home
+    /// directory (or anything under it), a bare glob, or an absolute path that
+    /// isn't a scratch/temp location. Relative paths are treated as
+    /// project-local build output and left alone.
+    static func isDestructiveRemoveTarget(_ raw: String) -> Bool {
+        let target = raw.trimmingCharacters(in: CharacterSet(charactersIn: "\"'`"))
+        guard !target.isEmpty, target != "--" else { return false }
+
+        let dangerousExact: Set<String> = [
+            "/", "/*", "~", "~/", "~/*", "$HOME", "${HOME}", "$HOME/", "${HOME}/", "$HOME/*", "${HOME}/*", "*",
+        ]
+        if dangerousExact.contains(target) { return true }
+
+        if target.hasPrefix("~/") || target.hasPrefix("$HOME/") || target.hasPrefix("${HOME}/") {
+            return true
+        }
+        if target.hasPrefix("$TMPDIR") || target.hasPrefix("${TMPDIR}") { return false }
+
+        guard target.hasPrefix("/") else { return false } // relative: build/, ./dist, node_modules …
+
+        let tempPrefixes = [
+            "/tmp/", "/private/tmp/", "/var/tmp/", "/private/var/tmp/",
+            "/var/folders/", "/private/var/folders/", "/dev/shm/",
+        ]
+        return !tempPrefixes.contains { target.hasPrefix($0) }
+    }
 
     // MARK: Scan
 
@@ -304,12 +447,16 @@ enum SecurityScanner {
     }()
 
     /// Scan arbitrary text (a skill's markdown body, an embedded script, etc.).
-    static func scan(text: String) -> SecurityScanResult {
+    ///
+    /// - Parameter file: skill-relative path recorded on each finding when the
+    ///   text is a bundled file rather than the main skill file. Line numbers
+    ///   always restart at 1 for each call.
+    static func scan(text: String, file: String? = nil) -> SecurityScanResult {
         guard !text.isEmpty else {
             return SecurityScanResult(findings: [], riskScore: 0)
         }
 
-        let cacheKey = text as NSString
+        let cacheKey = ((file ?? "") + "\u{0}" + text) as NSString
         if let cached = scanCache.object(forKey: cacheKey) {
             return cached.result
         }
@@ -319,7 +466,14 @@ enum SecurityScanner {
 
         for (index, line) in lines.enumerated() {
             let range = NSRange(line.startIndex..<line.endIndex, in: line)
-            for rule in rules where rule.pattern.firstMatch(in: line, range: range) != nil {
+            var matched: [SecurityRule] = []
+            for rule in rules {
+                guard let match = rule.pattern.firstMatch(in: line, range: range) else { continue }
+                if let validator = rule.validator, !validator(line, match) { continue }
+                matched.append(rule)
+            }
+            let matchedIDs = Set(matched.map(\.id))
+            for rule in matched where rule.shadowedBy.isDisjoint(with: matchedIDs) {
                 findings.append(
                     SecurityFinding(
                         ruleID: rule.id,
@@ -328,7 +482,8 @@ enum SecurityScanner {
                         title: rule.title,
                         heuristic: rule.heuristic,
                         lineNumber: index + 1,
-                        snippet: String(line.trimmingCharacters(in: .whitespaces).prefix(200))
+                        snippet: String(line.trimmingCharacters(in: .whitespaces).prefix(200)),
+                        file: file
                     )
                 )
             }
@@ -341,7 +496,7 @@ enum SecurityScanner {
 
     /// Saturating weighted score, capped at 100. A single critical never
     /// fully saturates the bar, so multiple findings still escalate.
-    private static func score(for findings: [SecurityFinding]) -> Int {
+    static func score(for findings: [SecurityFinding]) -> Int {
         let raw = findings.reduce(0) { $0 + $1.severity.weight }
         return min(100, raw)
     }
@@ -370,7 +525,11 @@ enum SecurityScanner {
             out += "\(result.scoreBreakdownText) \(result.scoreReasonText)\n\n"
             for finding in result.findings.sorted(by: { $0.severity > $1.severity }) {
                 let tag = finding.heuristic ? " _(heuristic)_" : ""
-                out += "- **[\(finding.severity.label), +\(finding.severity.weight)]** \(finding.title)\(tag) — \(finding.category.rawValue), line \(finding.lineNumber)\n"
+                out += "- **[\(finding.severity.label), +\(finding.severity.weight)]** \(finding.title)\(tag) — \(finding.category.rawValue), \(finding.locationText)\n"
+            }
+            if !result.suppressedFindings.isEmpty {
+                let ids = Set(result.suppressedFindings.map(\.ruleID)).sorted().joined(separator: ", ")
+                out += "- _Ignored for this skill: \(ids)_\n"
             }
         }
 
