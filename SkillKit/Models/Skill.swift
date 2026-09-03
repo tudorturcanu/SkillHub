@@ -269,8 +269,13 @@ extension Skill {
     /// examined; the canonical file or directory goes last. A symlink that
     /// cannot be trashed (e.g. on a volume without a Trash) is simply unlinked,
     /// since the link itself carries no user data.
-    func deleteFromDisk() throws {
+    /// Moves the skill and every path it is installed at to the Trash.
+    /// Returns where each item landed, so the caller can log or offer an undo
+    /// hint; the result is safe to ignore.
+    @discardableResult
+    func deleteFromDisk() throws -> [URL] {
         let fm = FileManager.default
+        var trashedURLs: [URL] = []
 
         // Symlinks first, then real items, so trashing the canonical directory
         // never turns a not-yet-processed link into a dangling one.
@@ -294,9 +299,16 @@ extension Skill {
             try SandboxBookmarkManager.resolveAndAccessParent(for: path) { url in
                 guard Self.itemExists(atPath: url.path) else { return }
                 do {
-                    try fm.trashItem(at: url, resultingItemURL: nil)
+                    var resultingURL: NSURL?
+                    try fm.trashItem(at: url, resultingItemURL: &resultingURL)
+                    if let trashed = resultingURL as URL? {
+                        trashedURLs.append(trashed)
+                    }
                 } catch {
                     if Self.isSymbolicLink(atPath: url.path) {
+                        // A symlink into a folder we can't trash (a read-only
+                        // mount, say) is still worth unlinking: it points at
+                        // something we just removed.
                         try fm.removeItem(at: url)
                     } else {
                         throw SkillDeletionError.trashFailed(path, error)
@@ -304,6 +316,11 @@ extension Skill {
                 }
             }
         }
+
+        if !trashedURLs.isEmpty {
+            AppLogger.fileIO.notice("Moved \(trashedURLs.count) item(s) to the Trash for \(self.name)")
+        }
+        return trashedURLs
     }
 
     /// `fileExists(atPath:)` follows symlinks and reports a dangling link as

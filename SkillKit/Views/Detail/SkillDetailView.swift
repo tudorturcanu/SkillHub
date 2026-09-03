@@ -432,7 +432,7 @@ struct SkillDetailView: View {
             try skill.makeGlobal()
             try? modelContext.save()
         } catch {
-            activeAlert = .restoreError(error.localizedDescription)
+            activeAlert = .makeGlobalError(error.localizedDescription)
         }
     }
 
@@ -528,7 +528,7 @@ struct SkillDetailView: View {
             document.load(from: skill)
             try? modelContext.save()
         } catch {
-            activeAlert = .makeGlobalError(error.localizedDescription)
+            activeAlert = .restoreError(error.localizedDescription)
         }
     }
 
