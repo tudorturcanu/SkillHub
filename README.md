@@ -15,10 +15,12 @@ Instead of letting your agent instructions stay scattered across Claude Code, Co
 
 - **Unified Developer Dashboard**: View aggregated metrics (total skills, active rules, agents, and connected remote servers) alongside a real-time activity stream.
 - **Native SwiftUI Editor & Live Preview**: High-performance syntax-highlighted Markdown editor with autosave indicators and a live side-by-side HTML/Markdown preview parsing frontmatter metadata.
-- **Static Security Scanner**: Clean-room offline static analysis engine that checks skill instructions for prompt injections, hardcoded API keys (OpenAI, Anthropic, GitHub, AWS), SSH private key leakage, zero-width unicode tricks, and destructive shell execution.
-- **Automated Skill Linter**: Automated rule checker and quick-fix provider for missing metadata, frontmatter names/descriptions, trailing whitespace, and unicode formatting.
-- **Multi-Platform Probing**: Automatically detects and scans project-local config folders, global config directories, and CLI/Desktop plugins.
-- **Interactive Agent Chat**: Refine or refactor your instructions by chatting directly with your active local agent (e.g., Claude Code, Codex) from within the app.
+- **Safe Editing**: Autosave flushes when you switch items or quit, so an edit is never lost to a stray click. If an agent rewrites a file you have open, SkillKit says so and offers Reload or Keep Mine rather than overwriting either side. Deletes move to the Trash.
+- **Static Security Scanner**: Clean-room offline static analysis engine that checks skill instructions for prompt injections, hardcoded API keys (OpenAI, Anthropic, GitHub, AWS), SSH private key leakage, zero-width unicode tricks, and destructive shell execution. Findings carry a file and line you can jump to, and any rule can be ignored per skill.
+- **Automated Skill Linter**: Automated rule checker and quick-fix provider for missing metadata, frontmatter names/descriptions, trailing whitespace, and unicode formatting. Every fix is previewed as a diff before it is written, and Markdown hard breaks and fenced code are left alone.
+- **Multi-Platform Probing**: Automatically detects and scans project-local config folders, global config directories, and CLI/Desktop plugins. Rescans are incremental, so editing a skill does not re-walk the whole library.
+- **Interactive Agent Chat**: Refine or refactor your instructions by chatting directly with your active local agent (e.g., Claude Code, Codex) from within the app. Replies stream as they arrive, follow-up messages keep the conversation's context, and transcripts survive closing the panel.
+- **Finds Your CLI Anywhere**: Agent binaries are resolved through your login shell, so installs managed by fnm, mise, volta, bun or pnpm are picked up. You can also point SkillKit at a binary yourself in Settings → Agents.
 - **Visual Diff Review**: Inspect, accept, or reject edits suggested by the agent through a native side-by-side diff review panel.
 - **SSH Remote VM Syncing**: Sync and manage skill libraries on remote cloud VMs or servers over secure SSH connections.
 - **Community Skill Registry**: Browse, discover, and download curated open-source agent skills directly into your local library.
@@ -47,7 +49,31 @@ SkillKit scans both **project-local directories** and **global configuration pat
 
 By default, the global source of truth directory resides at:
 * Local Library: `~/Library/Application Support/SkillKit/LocalLibrary/`
-* Can be customized in Settings to `~/.agents` or any custom path to share skills across terminal profiles.
+* Change it under **Settings → Folders → Library root** to `~/.agents` or any custom path to share skills across terminal profiles. Changing it triggers a rescan.
+
+Skills installed by Claude Code plugins and Claude Desktop are hidden by default because they are read-only; show them with **Settings → Folders → Include plugin-installed skills**.
+
+### If the library index cannot be opened
+
+The index is a cache over the Markdown on disk. If it is ever corrupt or cannot be migrated, SkillKit sets the file aside with a timestamped name, builds a fresh one, and rescans — rather than refusing to launch. Your skills and rules are untouched; favorites, collections and saved servers are reset, and the old file is kept so it can be recovered.
+
+---
+
+## ⌨️ Keyboard Shortcuts
+
+| Action | Shortcut |
+| :--- | :--- |
+| New skill / New rule | `⌘N` / `⇧⌘N` |
+| Save | `⌘S` |
+| Duplicate | `⌘D` |
+| Move to Trash | `⌘⌫` |
+| Find in Library | `⌥⌘F` |
+| Dashboard / Skills / Rules / Favorites | `⌘1` … `⌘4` |
+| Editor / Preview / Playground | `⌥⌘1` … `⌥⌘3` |
+| Bold / Italic / Strikethrough | `⌘B` / `⌘I` / `⇧⌘X` |
+| Add or remove favorite | `⇧⌘F` |
+| Show selected item in Finder | `⇧⌘O` |
+| Rescan local skills | `⇧⌘R` |
 
 ---
 
