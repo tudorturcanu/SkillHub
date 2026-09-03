@@ -83,6 +83,36 @@ final class StoreBootstrapTests: XCTestCase {
         XCTAssertTrue(fetched.contains { $0.name == "Recovered" })
     }
 
+    /// Two failures inside the same second must not let the second one delete
+    /// the first backup — that copy may hold the user's only collections.
+    func testASecondRecoveryDoesNotDestroyTheFirstBackup() throws {
+        let schema = Schema(versionedSchema: SchemaV1.self)
+
+        try corruptTheStore()
+        _ = try StoreBootstrap.makeContainer(schema: schema)
+        let afterFirst = try FileManager.default
+            .contentsOfDirectory(atPath: directory.path)
+            .filter { $0.hasPrefix("SkillKit-unreadable-") && $0.hasSuffix(".store") }
+        XCTAssertEqual(afterFirst.count, 1)
+
+        let firstBackup = directory.appendingPathComponent(try XCTUnwrap(afterFirst.first))
+        let firstBytes = try Data(contentsOf: firstBackup)
+
+        // Immediately corrupt and recover again, within the same second.
+        try Data("a different corruption".utf8).write(to: storeURL)
+        _ = try StoreBootstrap.makeContainer(schema: schema)
+
+        let afterSecond = try FileManager.default
+            .contentsOfDirectory(atPath: directory.path)
+            .filter { $0.hasPrefix("SkillKit-unreadable-") && $0.hasSuffix(".store") }
+        XCTAssertEqual(afterSecond.count, 2, "the earlier backup must still be there")
+        XCTAssertEqual(
+            try Data(contentsOf: firstBackup),
+            firstBytes,
+            "the first backup must not be overwritten by the second recovery"
+        )
+    }
+
     func testAHealthyStoreIsOpenedInPlaceAndNotQuarantined() throws {
         let schema = Schema(versionedSchema: SchemaV1.self)
         _ = try StoreBootstrap.makeContainer(schema: schema)

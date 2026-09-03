@@ -31,9 +31,23 @@ struct SkillKitApp: App {
         } catch {
             // Last resort: an in-memory store still lets the app open and
             // rescan the library from disk, which beats refusing to launch.
+            // Nothing is saved, so the UI says so rather than letting the user
+            // build collections that quietly vanish on quit.
             AppLogger.fileIO.fault("Falling back to an in-memory store: \(error.localizedDescription)")
+            Task { @MainActor in StoreBootstrap.runningInMemoryOnly = true }
+
             let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
-            return try! ModelContainer(for: schema, configurations: [config])
+            if let container = try? ModelContainer(for: schema, configurations: [config]) {
+                return container
+            }
+            // The schema itself is unusable, so no configuration of it can
+            // load. An empty schema still produces a container the app can
+            // launch against, in a clearly degraded state.
+            AppLogger.fileIO.fault("The schema could not be loaded at all; starting with an empty store")
+            return try! ModelContainer(
+                for: Schema([]),
+                configurations: [ModelConfiguration(schema: Schema([]), isStoredInMemoryOnly: true)]
+            )
         }
     }()
 

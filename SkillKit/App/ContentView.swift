@@ -22,6 +22,8 @@ struct ContentView: View {
     /// Set when the store had to be rebuilt at launch, so we can explain the
     /// missing favorites and collections instead of leaving the user guessing.
     @State private var recoveredStoreURL: URL?
+    /// Set when the app is running without any persistent store at all.
+    @State private var isRunningInMemoryOnly = false
 
     var body: some View {
         @Bindable var appState = appState
@@ -75,7 +77,17 @@ struct ContentView: View {
             startScanning()
             restoreSessionIfNeeded()
             showAutosaveSnackbarIfNeeded()
+            // Consume it, so a second window (or a restored one) doesn't show
+            // the same alert again.
             recoveredStoreURL = StoreBootstrap.recoveredFromUnreadableStore
+            StoreBootstrap.recoveredFromUnreadableStore = nil
+            isRunningInMemoryOnly = StoreBootstrap.runningInMemoryOnly
+            StoreBootstrap.runningInMemoryOnly = false
+        }
+        .alert("SkillKit can't save right now", isPresented: $isRunningInMemoryOnly) {
+            Button("OK") { isRunningInMemoryOnly = false }
+        } message: {
+            Text("The library index could not be opened or rebuilt, so this session is running in memory. Your skills and rules on disk are safe and editing them still works, but favorites, collections and saved servers will not be kept when you quit.")
         }
         .alert("SkillKit rebuilt its library index", isPresented: Binding(
             get: { recoveredStoreURL != nil },

@@ -27,8 +27,9 @@ final class FileWatcher {
     /// Subdirectories we armed ourselves after a parent fired (see
     /// `armNewSubdirectoriesLocked`). Kept apart from the caller's set so a
     /// refresh of the explicit watches doesn't drop them before the skill they
-    /// belong to has been discovered.
-    private var autoWatchedPaths = Set<String>()
+    /// belong to has been discovered. In insertion order, so the oldest can be
+    /// retired once the bridge is no longer worth a descriptor.
+    private var autoWatchedPaths: [String] = []
     private var pendingPaths = Set<String>()
     private var flushWorkItem: DispatchWorkItem?
 
@@ -53,11 +54,11 @@ final class FileWatcher {
         let wanted = Set(paths.filter { FileManager.default.fileExists(atPath: $0) })
         queue.sync {
             let current = Set(sources.keys)
-            for path in current.subtracting(wanted).subtracting(autoWatchedPaths) {
+            for path in current.subtracting(wanted).subtracting(Set(autoWatchedPaths)) {
                 cancelSourceLocked(for: path)
             }
             // An explicitly requested path is no longer just an auto-watch.
-            autoWatchedPaths.subtract(wanted)
+            autoWatchedPaths.removeAll { wanted.contains($0) }
             for path in wanted.subtracting(current).sorted() {
                 openSourceLocked(for: path)
             }
@@ -82,6 +83,7 @@ final class FileWatcher {
             for path in Array(sources.keys) {
                 cancelSourceLocked(for: path)
             }
+            autoWatchedPaths.removeAll()
         }
     }
 
@@ -121,6 +123,7 @@ final class FileWatcher {
     }
 
     private func cancelSourceLocked(for path: String) {
+        autoWatchedPaths.removeAll { $0 == path }
         guard let source = sources.removeValue(forKey: path) else { return }
         source.cancel()
     }
@@ -178,14 +181,31 @@ final class FileWatcher {
             guard FileManager.default.fileExists(atPath: child, isDirectory: &childIsDirectory),
                   childIsDirectory.boolValue else { continue }
             openSourceLocked(for: child)
-            autoWatchedPaths.insert(child)
+            autoWatchedPaths.append(child)
             pendingPaths.insert(child)
+        }
+
+        retireOldestAutoWatchesLocked()
+    }
+
+    /// These watches exist only to bridge the gap between a skill folder being
+    /// created and its file landing. One that never became a real skill (an
+    /// empty folder, a build directory) would otherwise hold a descriptor for
+    /// the life of the session, so the oldest are retired past a cap.
+    private func retireOldestAutoWatchesLocked() {
+        guard autoWatchedPaths.count > Self.maxAutoWatchedPaths else { return }
+        let excess = autoWatchedPaths.count - Self.maxAutoWatchedPaths
+        for path in autoWatchedPaths.prefix(excess) {
+            cancelSourceLocked(for: path)
         }
     }
 
     /// Upper bound on directory entries we'll auto-watch, so pointing the app
     /// at a large tree doesn't open thousands of descriptors.
     private static let maxAutoWatchedChildren = 256
+
+    /// Upper bound on how many self-armed watches are held at once.
+    private static let maxAutoWatchedPaths = 256
 
     deinit {
         // Cancel directly; `queue.sync` from deinit could deadlock if the

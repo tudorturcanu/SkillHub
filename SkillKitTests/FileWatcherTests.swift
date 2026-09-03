@@ -27,7 +27,10 @@ final class FileWatcherTests: XCTestCase {
     /// The batch must name the directory that actually changed, otherwise the
     /// scanner cannot narrow the rescan and falls back to walking everything.
     func testCallbackReportsTheChangedDirectory() throws {
+        // An atomic write emits several directory events, which can arrive in
+        // more than one coalesced batch.
         let expectation = expectation(description: "watcher reports the changed directory")
+        expectation.assertForOverFulfill = false
         let watchedPath = root.path
         let received = Locked<Set<String>>([])
 
@@ -54,7 +57,9 @@ final class FileWatcherTests: XCTestCase {
     /// up until a manual rescan or relaunch.
     func testFileWrittenIntoANewlyCreatedSubdirectoryIsObserved() throws {
         let parentEvent = expectation(description: "parent directory reports the new folder")
+        parentEvent.assertForOverFulfill = false
         let childEvent = expectation(description: "new folder reports its SKILL.md")
+        childEvent.assertForOverFulfill = false
         let newFolder = root.appendingPathComponent("brand-new-skill")
 
         let watcher = FileWatcher(coalesceInterval: 0.1) { changed in
@@ -82,6 +87,7 @@ final class FileWatcherTests: XCTestCase {
     /// armed itself, or the bridge to discovering a new skill is lost.
     func testRefreshingWatchesKeepsSelfArmedSubdirectories() throws {
         let parentEvent = expectation(description: "parent reports the new folder")
+        parentEvent.assertForOverFulfill = false
         let newFolder = root.appendingPathComponent("auto-armed")
 
         let watcher = FileWatcher(coalesceInterval: 0.1) { changed in
