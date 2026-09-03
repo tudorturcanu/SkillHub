@@ -35,6 +35,11 @@ struct SkillListView: View {
     /// The row the user clicked most recently. With several rows selected, the
     /// detail shows this one rather than an arbitrary member of the set.
     @State private var lastClickedPath: String?
+    /// Search text the list is actually filtering on. Matching scans every
+    /// skill's body, so it trails the field by a moment rather than running on
+    /// each keystroke; typing stays responsive on a large library.
+    @State private var appliedSearchText: String = ""
+    @State private var searchDebounceTask: Task<Void, Never>?
     /// A selection value this view set itself. `onChange(of: selectedSkillPaths)`
     /// compares against it to tell programmatic changes from user clicks.
     @State private var programmaticSelection: Set<String>?
@@ -122,7 +127,7 @@ struct SkillListView: View {
             result = result.filter(\.isRemote)
         }
 
-        if !appState.searchText.isEmpty {
+        if !appliedSearchText.isEmpty {
             result = result.filter { matchesSearch($0) }
         }
 
@@ -176,7 +181,7 @@ struct SkillListView: View {
     }
 
     private var scopedTotalCount: Int {
-        guard !appState.searchText.isEmpty || appState.skillQuickFilter != .all else {
+        guard !appliedSearchText.isEmpty || appState.skillQuickFilter != .all else {
             return baseFilteredSkills.count
         }
 
@@ -235,7 +240,7 @@ struct SkillListView: View {
     }
 
     private func matchesSearch(_ skill: Skill) -> Bool {
-        let searchText = appState.searchText
+        let searchText = appliedSearchText
         switch appState.skillSearchScope {
         case .all:
             return skill.name.localizedCaseInsensitiveContains(searchText) ||
@@ -327,7 +332,7 @@ struct SkillListView: View {
     // MARK: - Empty state
 
     private var isSearchOrQuickFilterActive: Bool {
-        !appState.searchText.isEmpty || appState.skillQuickFilter != .all
+        !appliedSearchText.isEmpty || appState.skillQuickFilter != .all
     }
 
     /// Copy tailored to the current sidebar filter, so an empty Rules list
@@ -581,17 +586,21 @@ struct SkillListView: View {
     var body: some View {
         @Bindable var appState = appState
 
+        // Filtering scans every skill's body text, so compute it once per pass
+        // rather than each time the list, the count and the empty state ask.
+        let visibleSkills = filteredSkills
+
         VStack(spacing: 0) {
             if isControlBarVisible {
                 SkillListControlBar(
-                    filteredCount: filteredSkills.count,
+                    filteredCount: visibleSkills.count,
                     totalCount: scopedTotalCount
                 )
                 Divider()
             }
 
             List(selection: $selectedSkillPaths) {
-                ForEach(filteredSkills) { skill in
+                ForEach(visibleSkills) { skill in
                     SkillRow(
                         skill: skill,
                         showTypeBadge: showsTypeBadge,
@@ -807,7 +816,7 @@ struct SkillListView: View {
             }
         }
         .overlay {
-            if filteredSkills.isEmpty { emptyStateView }
+            if visibleSkills.isEmpty { emptyStateView }
         }
         .onAppear {
             // Arriving with a selection already made elsewhere (dashboard,
@@ -897,8 +906,24 @@ struct SkillListView: View {
         .onChange(of: appState.skillSortOption) {
             reconcileHighlightWithVisibleRows()
         }
-        .onChange(of: appState.searchText) {
-            reconcileHighlightWithVisibleRows()
+        .onChange(of: appState.searchText) { _, newValue in
+            searchDebounceTask?.cancel()
+            // Clearing the field should feel instant; narrowing can wait a beat.
+            guard !newValue.isEmpty else {
+                appliedSearchText = ""
+                reconcileHighlightWithVisibleRows()
+                return
+            }
+            searchDebounceTask = Task {
+                try? await Task.sleep(for: .milliseconds(180))
+                guard !Task.isCancelled else { return }
+                appliedSearchText = newValue
+                reconcileHighlightWithVisibleRows()
+            }
+        }
+        .onAppear {
+            // Arriving with a query already typed (or restored) must filter.
+            appliedSearchText = appState.searchText
         }
         .onChange(of: appState.toolKindFilter) {
             reconcileHighlightWithVisibleRows()
