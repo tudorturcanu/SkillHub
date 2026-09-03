@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import AppKit
 
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
@@ -14,6 +15,9 @@ struct ContentView: View {
     @State private var didRestoreSession = false
     /// A file the user opened from Finder that isn't in the library yet; selected once it appears.
     @State private var pendingOpenPath: String?
+    /// Set when the store had to be rebuilt at launch, so we can explain the
+    /// missing favorites and collections instead of leaving the user guessing.
+    @State private var recoveredStoreURL: URL?
 
     var body: some View {
         @Bindable var appState = appState
@@ -66,6 +70,24 @@ struct ContentView: View {
             startScanning()
             restoreSessionIfNeeded()
             showAutosaveSnackbarIfNeeded()
+            recoveredStoreURL = StoreBootstrap.recoveredFromUnreadableStore
+        }
+        .alert("SkillKit rebuilt its library index", isPresented: Binding(
+            get: { recoveredStoreURL != nil },
+            set: { if !$0 { recoveredStoreURL = nil } }
+        )) {
+            Button("OK") { recoveredStoreURL = nil }
+            if let recoveredStoreURL {
+                Button("Show Old File in Finder") {
+                    NSWorkspace.shared.selectFile(
+                        recoveredStoreURL.path,
+                        inFileViewerRootedAtPath: recoveredStoreURL.deletingLastPathComponent().path
+                    )
+                    self.recoveredStoreURL = nil
+                }
+            }
+        } message: {
+            Text("The previous index could not be opened, so it was set aside and a new one built. Your skills and rules are safe on disk and have been rescanned, but favorites, collections and saved servers were reset.")
         }
         .onOpenURL { url in
             open(fileURL: url)

@@ -2,6 +2,67 @@ import Foundation
 import SwiftData
 
 enum StoreBootstrap {
+
+    /// Set when the previous store could not be opened and was set aside so the
+    /// app could start. The library itself lives on disk as Markdown, so it is
+    /// rebuilt by the next scan; only favorites, collections and server entries
+    /// are lost, and the old file is kept so it can be recovered.
+    @MainActor static var recoveredFromUnreadableStore: URL?
+
+    /// Overrides where the store lives. Tests set this so they never touch the
+    /// user's real library index; nil means the standard Application Support
+    /// location.
+    nonisolated(unsafe) static var containerDirectoryOverride: URL?
+
+    /// Opens the store, falling back to a fresh one if the existing file cannot
+    /// be opened or migrated. Crashing on a corrupt store would lock the user
+    /// out of the app on every launch with no way back in.
+    static func makeContainer(schema: Schema) throws -> ModelContainer {
+        do {
+            let config = try makeConfiguration(schema: schema)
+            return try ModelContainer(
+                for: schema,
+                migrationPlan: SkillKitMigrationPlan.self,
+                configurations: [config]
+            )
+        } catch {
+            AppLogger.fileIO.error("Could not open the store: \(error.localizedDescription). Starting a fresh one.")
+
+            let quarantined = try? quarantineStore()
+            let config = try makeConfiguration(schema: schema)
+            let container = try ModelContainer(
+                for: schema,
+                migrationPlan: SkillKitMigrationPlan.self,
+                configurations: [config]
+            )
+            if let quarantined {
+                Task { @MainActor in recoveredFromUnreadableStore = quarantined }
+            }
+            return container
+        }
+    }
+
+    /// Moves the unreadable store (and its -shm/-wal sidecars) aside, returning
+    /// where they went.
+    private static func quarantineStore() throws -> URL {
+        let fm = FileManager.default
+        let storeURL = try appSupportDirectory(using: fm).appendingPathComponent("SkillKit.store")
+        let stamp = ISO8601DateFormatter().string(from: .now).replacingOccurrences(of: ":", with: "-")
+        let quarantineURL = storeURL.deletingLastPathComponent()
+            .appendingPathComponent("SkillKit-unreadable-\(stamp).store")
+
+        for suffix in ["", "-shm", "-wal"] {
+            let source = URL(fileURLWithPath: storeURL.path + suffix)
+            guard fm.fileExists(atPath: source.path) else { continue }
+            let destination = URL(fileURLWithPath: quarantineURL.path + suffix)
+            try? fm.removeItem(at: destination)
+            try fm.moveItem(at: source, to: destination)
+        }
+
+        AppLogger.fileIO.notice("Set the unreadable store aside at \(quarantineURL.lastPathComponent)")
+        return quarantineURL
+    }
+
     static func makeConfiguration(schema: Schema) throws -> ModelConfiguration {
         let storeURL = try prepareStoreURL(schema: schema)
         return ModelConfiguration(schema: schema, url: storeURL)
@@ -24,6 +85,11 @@ enum StoreBootstrap {
     }
 
     private static func appSupportDirectory(using fm: FileManager) throws -> URL {
+        if let containerDirectoryOverride {
+            try fm.createDirectory(at: containerDirectoryOverride, withIntermediateDirectories: true)
+            return containerDirectoryOverride
+        }
+
         guard let baseURL = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
             throw CocoaError(.fileNoSuchFile)
         }
@@ -34,6 +100,10 @@ enum StoreBootstrap {
     }
 
     private static func legacyStoreURL(using fm: FileManager) throws -> URL {
+        if let containerDirectoryOverride {
+            return containerDirectoryOverride.appendingPathComponent("default.store")
+        }
+
         guard let baseURL = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
             throw CocoaError(.fileNoSuchFile)
         }

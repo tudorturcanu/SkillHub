@@ -27,14 +27,13 @@ struct SkillKitApp: App {
         let schema = Schema(versionedSchema: SchemaV1.self)
 
         do {
-            let config = try StoreBootstrap.makeConfiguration(schema: schema)
-            return try ModelContainer(
-                for: schema,
-                migrationPlan: SkillKitMigrationPlan.self,
-                configurations: [config]
-            )
+            return try StoreBootstrap.makeContainer(schema: schema)
         } catch {
-            fatalError("Could not create ModelContainer: \(error)")
+            // Last resort: an in-memory store still lets the app open and
+            // rescan the library from disk, which beats refusing to launch.
+            AppLogger.fileIO.fault("Falling back to an in-memory store: \(error.localizedDescription)")
+            let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+            return try! ModelContainer(for: schema, configurations: [config])
         }
     }()
 
