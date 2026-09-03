@@ -12,6 +12,10 @@ struct ContentView: View {
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var showingAutosaveSnackbar = false
     @State private var isSearchPresented = false
+    /// Focus for the toolbar search field. Presenting the field is not enough:
+    /// without this the field appears but the keyboard stays on the list, so
+    /// "Find in Library" would still need a click.
+    @FocusState private var isSearchFocused: Bool
     @State private var didRestoreSession = false
     /// A file the user opened from Finder that isn't in the library yet; selected once it appears.
     @State private var pendingOpenPath: String?
@@ -52,6 +56,7 @@ struct ContentView: View {
                     }
                 }
                 .searchable(text: $appState.searchText, isPresented: $isSearchPresented, prompt: searchPrompt)
+                .searchFocused($isSearchFocused)
                 .onSubmit(of: .search) {
                     appState.rememberCurrentSearch()
                 }
@@ -97,6 +102,7 @@ struct ContentView: View {
                 appState.sidebarFilter = .allSkills
             }
             isSearchPresented = true
+            isSearchFocused = true
         }
         .onChange(of: appState.selectedSkill) {
             appState.persistSession()
