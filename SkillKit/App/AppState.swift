@@ -8,6 +8,7 @@ final class AppState {
     var showingNewSkillSheet: Bool = false
     var showingDuplicateSkillSheet: Bool = false
     var skillToDuplicate: Skill? = nil
+    var skillToRename: Skill? = nil
     var newItemKind: ItemKind = .skill
     var sidebarFilter: SidebarFilter = .dashboard
     /// Filter by item kind within a tool view (nil = show all)

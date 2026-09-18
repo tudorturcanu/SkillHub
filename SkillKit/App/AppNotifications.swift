@@ -5,6 +5,8 @@ import Foundation
 extension Notification.Name {
     /// Ask the detail view to delete the currently selected skill (with confirmation).
     static let deleteCurrentSkill = Notification.Name("deleteCurrentSkill")
+    /// Ask the detail view to flush pending edits and open Rename for the current item.
+    static let renameCurrentSkill = Notification.Name("renameCurrentSkill")
     /// Ask the detail view to switch view mode. `object` is a `String`: "edit", "preview", or "playground".
     static let setDetailViewMode = Notification.Name("setDetailViewMode")
     /// Ask the focused editor to apply a Markdown format. `object` is a `String`: "bold", "italic", "strikethrough".

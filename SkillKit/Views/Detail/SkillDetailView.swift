@@ -206,6 +206,11 @@ struct SkillDetailView: View {
             guard !skill.isReadOnly else { return }
             activeAlert = .confirmDelete
         }
+        .onReceive(NotificationCenter.default.publisher(for: .renameCurrentSkill)) { _ in
+            guard !skill.isReadOnly, !skill.isRemote else { return }
+            flushPendingSave()
+            appState.skillToRename = skill
+        }
         .onReceive(NotificationCenter.default.publisher(for: .setDetailViewMode)) { notification in
             guard let raw = notification.object as? String,
                   let mode = ViewMode(rawValue: raw) else { return }
@@ -269,6 +274,16 @@ struct SkillDetailView: View {
                 .accessibilityValue(skill.isFavorite ? "On" : "Off")
             }
             if !skill.isReadOnly {
+                ToolbarItem {
+                    Button {
+                        flushPendingSave()
+                        appState.skillToRename = skill
+                    } label: {
+                        Image(systemName: "pencil.line")
+                    }
+                    .help("Rename \(skill.displayTypeName)")
+                    .accessibilityLabel("Rename")
+                }
                 ToolbarItem {
                     Button {
                         showingLintFixes.toggle()

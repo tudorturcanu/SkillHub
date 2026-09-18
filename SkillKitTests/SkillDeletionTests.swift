@@ -139,6 +139,124 @@ final class SkillDeletionTests: XCTestCase {
     }
 }
 
+final class SkillRenameTests: XCTestCase {
+    private var root: URL!
+
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("skillkit-rename-tests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    }
+
+    override func tearDownWithError() throws {
+        if let root { try? FileManager.default.removeItem(at: root) }
+        try super.tearDownWithError()
+    }
+
+    func testRenameRuleMovesFileAndUpdatesHeading() throws {
+        let original = root.appendingPathComponent("old-rule.md")
+        try "# Old Rule (SkillKit Rule)\n\nKeep responses concise."
+            .write(to: original, atomically: true, encoding: .utf8)
+        let skill = Skill(
+            filePath: original.path,
+            toolSource: .claude,
+            name: "Old Rule",
+            content: "# Old Rule (SkillKit Rule)\n\nKeep responses concise.",
+            fileModifiedDate: .now,
+            fileSize: 52,
+            resolvedPath: original.path,
+            kind: .rule
+        )
+
+        try SkillRenamer.rename(skill, to: "Clear Answers")
+
+        let renamed = root.appendingPathComponent("clear-answers.md")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: original.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: renamed.path))
+        XCTAssertEqual(skill.filePath, renamed.path)
+        XCTAssertEqual(skill.name, "Clear Answers")
+        XCTAssertTrue(try String(contentsOf: renamed, encoding: .utf8).hasPrefix("# Clear Answers (SkillKit Rule)"))
+    }
+
+    func testRenameGlobalSkillKeepsLinkedInstallationWorking() throws {
+        let canonicalRoot = root.appendingPathComponent("agents/skills", isDirectory: true)
+        let linkedRoot = root.appendingPathComponent("claude/skills", isDirectory: true)
+        let canonicalFolder = canonicalRoot.appendingPathComponent("old-skill", isDirectory: true)
+        let linkedFolder = linkedRoot.appendingPathComponent("old-skill", isDirectory: true)
+        try FileManager.default.createDirectory(at: canonicalFolder, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: linkedRoot, withIntermediateDirectories: true)
+        let originalFile = canonicalFolder.appendingPathComponent("SKILL.md")
+        let originalContent = """
+        ---
+        name: old-skill
+        description: A linked skill
+        ---
+
+        # Old Skill (SkillKit Skill)
+
+        Instructions.
+        """
+        try originalContent.write(to: originalFile, atomically: true, encoding: .utf8)
+        try FileManager.default.createSymbolicLink(at: linkedFolder, withDestinationURL: canonicalFolder)
+
+        let linkedFile = linkedFolder.appendingPathComponent("SKILL.md")
+        let skill = Skill(
+            filePath: originalFile.path,
+            toolSource: .agents,
+            isDirectory: true,
+            name: "Old Skill",
+            skillDescription: "A linked skill",
+            content: "# Old Skill (SkillKit Skill)\n\nInstructions.",
+            frontmatter: ["name": "old-skill", "description": "A linked skill"],
+            fileModifiedDate: .now,
+            fileSize: originalContent.utf8.count,
+            resolvedPath: originalFile.path,
+            kind: .skill
+        )
+        skill.installedPaths = [originalFile.path, linkedFile.path]
+
+        try SkillRenamer.rename(skill, to: "Better Skill")
+
+        let renamedCanonical = canonicalRoot.appendingPathComponent("better-skill/SKILL.md")
+        let renamedLink = linkedRoot.appendingPathComponent("better-skill/SKILL.md")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: renamedCanonical.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: renamedLink.path))
+        XCTAssertEqual(
+            URL(fileURLWithPath: renamedLink.path).resolvingSymlinksInPath().path,
+            renamedCanonical.path
+        )
+        XCTAssertEqual(Set(skill.installedPaths), Set([renamedCanonical.path, renamedLink.path]))
+        XCTAssertEqual(skill.filePath, renamedCanonical.path)
+
+        let content = try String(contentsOf: renamedCanonical, encoding: .utf8)
+        XCTAssertTrue(content.contains("name: better-skill"))
+        XCTAssertTrue(content.contains("# Better Skill (SkillKit Skill)"))
+    }
+
+    func testRenameRefusesToOverwriteAnExistingItem() throws {
+        let original = root.appendingPathComponent("first.md")
+        let collision = root.appendingPathComponent("second.md")
+        try "# First".write(to: original, atomically: true, encoding: .utf8)
+        try "# Second".write(to: collision, atomically: true, encoding: .utf8)
+        let skill = Skill(
+            filePath: original.path,
+            toolSource: .claude,
+            name: "First",
+            content: "# First",
+            fileModifiedDate: .now,
+            fileSize: 7,
+            resolvedPath: original.path,
+            kind: .rule
+        )
+
+        XCTAssertThrowsError(try SkillRenamer.rename(skill, to: "Second"))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: original.path))
+        XCTAssertEqual(try String(contentsOf: collision, encoding: .utf8), "# Second")
+        XCTAssertEqual(skill.filePath, original.path)
+    }
+}
+
 /// The sidebar selection and open item are restored on relaunch, so the
 /// encoding has to survive a round trip for every filter shape.
 final class SidebarFilterPersistenceTests: XCTestCase {

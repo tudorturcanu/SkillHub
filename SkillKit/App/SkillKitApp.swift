@@ -95,6 +95,11 @@ struct SkillKitApp: App {
                 .keyboardShortcut("d", modifiers: .command)
                 .disabled(appState.selectedSkill == nil)
 
+                Button("Rename…") {
+                    NotificationCenter.default.post(name: .renameCurrentSkill, object: nil)
+                }
+                .disabled(appState.selectedSkill == nil || appState.selectedSkill?.isReadOnly == true || appState.selectedSkill?.isRemote == true)
+
                 Button("Move to Trash") {
                     NotificationCenter.default.post(name: .deleteCurrentSkill, object: nil)
                 }

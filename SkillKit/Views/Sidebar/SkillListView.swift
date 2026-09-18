@@ -451,6 +451,10 @@ struct SkillListView: View {
         }
         if !skill.isReadOnly {
             Divider()
+            Button("Rename…") {
+                appState.selectedSkill = skill
+                appState.skillToRename = skill
+            }
             Button("Duplicate…") {
                 appState.skillToDuplicate = skill
                 appState.showingDuplicateSkillSheet = true

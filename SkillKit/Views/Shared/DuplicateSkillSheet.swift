@@ -1,6 +1,97 @@
 import SwiftUI
 import SwiftData
 
+struct RenameSkillSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
+    @Bindable var skill: Skill
+    @State private var proposedName: String
+    @State private var errorMessage: String?
+    @FocusState private var isNameFocused: Bool
+
+    init(skill: Skill) {
+        self.skill = skill
+        _proposedName = State(initialValue: skill.name)
+    }
+
+    private var trimmedName: String {
+        proposedName.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var identifier: String {
+        SkillRenamer.identifier(from: trimmedName)
+    }
+
+    private var destinationPreview: String? {
+        guard !identifier.isEmpty else { return nil }
+        return SkillRenamer.destinationPath(for: skill, identifier: identifier)?
+            .replacingOccurrences(of: AppPaths.userHomeDirectory, with: "~")
+    }
+
+    var body: some View {
+        VStack(spacing: 20) {
+            Text("Rename \(skill.displayTypeName)")
+                .font(.title2)
+                .fontWeight(.bold)
+
+            Form {
+                VStack(alignment: .leading, spacing: 4) {
+                    TextField("Name", text: $proposedName)
+                        .textFieldStyle(.roundedBorder)
+                        .focused($isNameFocused)
+                        .onChange(of: proposedName) { errorMessage = nil }
+
+                    if identifier.isEmpty, !trimmedName.isEmpty {
+                        Text("Name must contain at least one letter or number.")
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    } else if let destinationPreview {
+                        Text(verbatim: destinationPreview)
+                            .font(.caption.monospaced())
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                            .truncationMode(.middle)
+                            .textSelection(.enabled)
+                    }
+                }
+            }
+            .formStyle(.grouped)
+
+            if let errorMessage {
+                Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            HStack {
+                Button("Cancel") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+                Spacer()
+                Button("Rename") { rename() }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(identifier.isEmpty || trimmedName == skill.name)
+            }
+        }
+        .padding(24)
+        .frame(width: 440)
+        .onAppear {
+            NotificationCenter.default.post(name: .saveCurrentSkill, object: nil)
+            isNameFocused = true
+        }
+    }
+
+    private func rename() {
+        do {
+            try SkillRenamer.rename(skill, to: trimmedName)
+            try modelContext.save()
+            dismiss()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+}
+
 struct DuplicateSkillSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext

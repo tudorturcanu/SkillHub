@@ -125,6 +125,9 @@ struct ContentView: View {
         .sheet(isPresented: $appState.showingDuplicateSkillSheet) {
             DuplicateSkillSheet()
         }
+        .sheet(item: $appState.skillToRename) { skill in
+            RenameSkillSheet(skill: skill)
+        }
         .onChange(of: appState.sidebarFilter) {
             appState.persistSession()
             appState.toolKindFilter = nil
