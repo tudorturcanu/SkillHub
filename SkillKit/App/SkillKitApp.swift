@@ -6,6 +6,7 @@ import SwiftData
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         NotificationCenter.default.post(name: .applicationWillTerminate, object: nil)
+        ComposeSessionStore.shared.flush()
     }
 }
 
@@ -185,6 +186,21 @@ struct SkillKitApp: App {
                 }
                 .keyboardShortcut("o", modifiers: [.command, .shift])
                 .disabled(appState.selectedSkill == nil || appState.selectedSkill?.isRemote == true)
+
+                Button("Open in Default Editor") {
+                    guard let skill = appState.selectedSkill, !skill.isRemote else { return }
+                    NSWorkspace.shared.open(URL(fileURLWithPath: skill.filePath))
+                }
+                .keyboardShortcut("o", modifiers: [.command, .option])
+                .disabled(appState.selectedSkill == nil || appState.selectedSkill?.isRemote == true)
+
+                Button("Copy File Path") {
+                    guard let path = appState.selectedSkill?.filePath else { return }
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(path, forType: .string)
+                }
+                .keyboardShortcut("c", modifiers: [.command, .option, .shift])
+                .disabled(appState.selectedSkill == nil)
             }
             CommandGroup(after: .help) {
                 #if DEBUG

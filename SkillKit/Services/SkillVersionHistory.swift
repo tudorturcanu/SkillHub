@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 struct SkillVersionSnapshot: Identifiable, Codable, Hashable {
@@ -68,7 +69,9 @@ enum SkillVersionHistory {
     }
 
     static func restore(_ snapshot: SkillVersionSnapshot, to skill: Skill) throws {
-        try snapshot.content.write(toFile: skill.filePath, atomically: true, encoding: .utf8)
+        // Through any symlink: an atomic write would replace the link with a copy.
+        let target = URL(fileURLWithPath: skill.filePath).resolvingSymlinksInPath().path
+        try snapshot.content.write(toFile: target, atomically: true, encoding: .utf8)
         let parsed = FrontmatterParser.parse(snapshot.content)
         if !parsed.name.isEmpty {
             skill.name = parsed.name
@@ -92,8 +95,13 @@ enum SkillVersionHistory {
         snapshotsDirectory.appendingPathComponent(historyFileName(for: path))
     }
 
-    private static func historyFileName(for path: String) -> String {
+    /// Hex-encodes the path, which keeps every existing history file readable. That name
+    /// doubles the path's length, so from 126 bytes up it would exceed the 255-byte
+    /// filename limit and every save would fail silently; those paths use a SHA-256 name.
+    static func historyFileName(for path: String) -> String {
         let data = Data(path.utf8)
-        return data.map { String(format: "%02x", $0) }.joined() + ".json"
+        let hexName = data.map { String(format: "%02x", $0) }.joined() + ".json"
+        if hexName.utf8.count <= 255 { return hexName }
+        return "sha256-" + SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined() + ".json"
     }
 }

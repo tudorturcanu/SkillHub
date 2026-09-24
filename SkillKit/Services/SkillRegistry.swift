@@ -25,22 +25,45 @@ final class SkillRegistry {
         let source: String
 
         var formattedInstalls: String {
-            if installs >= 1_000_000 {
-                return "\(String(format: "%.1f", Double(installs) / 1_000_000).replacingOccurrences(of: ".0", with: ""))M"
-            } else if installs >= 1_000 {
-                return "\(String(format: "%.1f", Double(installs) / 1_000).replacingOccurrences(of: ".0", with: ""))K"
-            }
-            return "\(installs)"
+            Self.compactCount(installs)
         }
+
+        /// `1234` → `1.2K`, `2_500_000` → `2.5M`. Picks the unit after rounding to one
+        /// decimal, so 999_950 reads `1M` rather than `1000K`.
+        static func compactCount(_ count: Int) -> String {
+            func oneDecimal(_ value: Double) -> Double { (value * 10).rounded() / 10 }
+            func text(_ value: Double) -> String {
+                value == value.rounded() ? String(Int(value)) : String(format: "%.1f", value)
+            }
+            let thousands = oneDecimal(Double(count) / 1_000)
+            if count >= 1_000_000 || thousands >= 1_000 {
+                return text(oneDecimal(Double(count) / 1_000_000)) + "M"
+            }
+            if count >= 1_000 {
+                return text(thousands) + "K"
+            }
+            return "\(count)"
+        }
+    }
+
+    /// `.urlQueryAllowed` leaves `&`, `=` and `+` alone, so `c++` reached the server as
+    /// `c  ` and `a&b` as `a`. `URLComponents` escapes the separators; `+` still needs
+    /// doing by hand because servers read it as a space.
+    static func searchURL(query: String) -> URL {
+        var components = URLComponents(string: "https://skills.sh/api/search")!
+        components.queryItems = [
+            URLQueryItem(name: "q", value: query),
+            URLQueryItem(name: "limit", value: "30"),
+        ]
+        components.percentEncodedQuery = components.percentEncodedQuery?
+            .replacingOccurrences(of: "+", with: "%2B")
+        return components.url!
     }
 
     func search(query: String) async throws -> [RegistrySkill] {
         guard query.count >= 2 else { return [] }
 
-        let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? query
-        let url = URL(string: "https://skills.sh/api/search?q=\(encoded)&limit=30")!
-
-        let (data, response) = try await URLSession.shared.data(from: url)
+        let (data, response) = try await URLSession.shared.data(from: Self.searchURL(query: query))
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
             throw RegistryError.searchFailed
         }
@@ -178,7 +201,7 @@ final class SkillRegistry {
 
     private func parseFrontmatterName(from content: String) -> String? {
         let lines = content.components(separatedBy: .newlines)
-        guard lines.first?.trimmingCharacters(in: .whitespaces) == "---" else { return nil }
+        guard lines.first?.trimmingCharacters(in: .whitespacesAndNewlines) == "---" else { return nil }
 
         for line in lines.dropFirst() {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
@@ -243,6 +266,15 @@ final class SkillRegistry {
         let canonicalFile = "\(canonicalDir)/SKILL.md"
         let canonicalAlreadyExisted = fm.fileExists(atPath: canonicalFile)
 
+        // Reusing the existing copy is only right when it is the same skill. Another
+        // repo's skill that sanitizes to the same folder name would otherwise get every
+        // new agent linked to it while the install reported success.
+        if canonicalAlreadyExisted,
+           let existing = try? String(contentsOfFile: canonicalFile, encoding: .utf8),
+           !Self.isSameSkill(existing, content) {
+            throw RegistryError.differentSkillInstalled(sanitized)
+        }
+
         // Write real file to canonical location if not already there
         if !canonicalAlreadyExisted {
             try SandboxBookmarkManager.resolveAndAccess(path: canonicalBaseDir) { _ in
@@ -260,12 +292,21 @@ final class SkillRegistry {
             // Skip if this is the canonical location we just created
             if agentDir == canonicalDir { continue }
 
-            // Skip if already installed (real file or symlink)
+            // Skip if already installed (real file or working symlink)
             if fm.fileExists(atPath: agentDir) { continue }
+            // `fileExists` follows links, so a broken one lands here and would make
+            // `createSymbolicLink` throw halfway through the install. It points at
+            // nothing, so replace it.
+            let isDanglingLink = (try? fm.destinationOfSymbolicLink(atPath: agentDir)) != nil
 
             try SandboxBookmarkManager.resolveAndAccess(path: agent.expandedSkillsDir) { _ in
                 // Create parent dir if needed
                 try fm.createDirectory(atPath: agent.expandedSkillsDir, withIntermediateDirectories: true)
+
+                if isDanglingLink {
+                    try fm.removeItem(atPath: agentDir)
+                    AppLogger.fileIO.notice("Replaced broken symlink at \(agentDir)")
+                }
 
                 // Create symlink to canonical dir
                 try fm.createSymbolicLink(atPath: agentDir, withDestinationPath: canonicalDir)
@@ -279,6 +320,15 @@ final class SkillRegistry {
         }
     }
 
+    /// Whether an installed `SKILL.md` and a registry one are the same skill: same
+    /// frontmatter name and description. The body may differ, since the user may have
+    /// edited their copy since installing it.
+    static func isSameSkill(_ installed: String, _ incoming: String) -> Bool {
+        let a = FrontmatterParser.parse(installed)
+        let b = FrontmatterParser.parse(incoming)
+        return a.name == b.name && a.description == b.description
+    }
+
     // MARK: - Errors
 
     enum RegistryError: LocalizedError {
@@ -288,6 +338,7 @@ final class SkillRegistry {
         case skillNotFound
         case invalidSkillName
         case skillAlreadyExists
+        case differentSkillInstalled(String)
 
         var errorDescription: String? {
             switch self {
@@ -297,6 +348,8 @@ final class SkillRegistry {
             case .skillNotFound: "File not found in repository"
             case .invalidSkillName: "Invalid name"
             case .skillAlreadyExists: "Already installed for all selected targets"
+            case .differentSkillInstalled(let folder):
+                "A different skill is already installed as “\(folder)”. Remove or rename it, then install again."
             }
         }
     }

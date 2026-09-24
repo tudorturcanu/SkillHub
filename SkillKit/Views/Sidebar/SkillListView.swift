@@ -412,6 +412,9 @@ struct SkillListView: View {
             try? modelContext.save()
         }
         Menu("Copy") {
+            Button("Name") {
+                copyToPasteboard(skill.name)
+            }
             Button("Content") {
                 copyToPasteboard(skill.content)
             }
@@ -447,6 +450,15 @@ struct SkillListView: View {
             Divider()
             Button("Show in Finder") {
                 NSWorkspace.shared.selectFile(skill.filePath, inFileViewerRootedAtPath: "")
+            }
+            Button("Open in Default Editor") {
+                NSWorkspace.shared.open(URL(fileURLWithPath: skill.filePath))
+            }
+            Button("Open Folder in Terminal") {
+                let folder = URL(fileURLWithPath: skill.filePath).deletingLastPathComponent()
+                if let terminal = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.Terminal") {
+                    NSWorkspace.shared.open([folder], withApplicationAt: terminal, configuration: NSWorkspace.OpenConfiguration())
+                }
             }
         }
         if !skill.isReadOnly {

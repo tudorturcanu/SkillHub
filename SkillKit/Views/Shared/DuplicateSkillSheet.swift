@@ -233,37 +233,40 @@ struct DuplicateSkillSheet: View {
                     return
                 }
 
-                // Read original content
-                var originalContent = ""
+                // Read original content. A local file that can't be read is an error, not a
+                // cue to copy `content`, which is only the body without its frontmatter.
+                let originalContent: String
                 if sourceSkill.isRemote {
-                    originalContent = sourceSkill.content
+                    originalContent = Self.reassembledRemoteContent(of: sourceSkill)
                 } else {
-                    do {
-                        originalContent = try String(contentsOfFile: sourceSkill.filePath, encoding: .utf8)
-                    } catch {
-                        originalContent = sourceSkill.content
-                    }
+                    originalContent = try String(contentsOfFile: sourceSkill.filePath, encoding: .utf8)
                 }
 
-                // Update content frontmatter/headings
-                var newContent = originalContent
-                let parsed = FrontmatterParser.parse(originalContent)
-                if !parsed.frontmatter.isEmpty {
-                    var fmData = parsed.frontmatter
-                    fmData["name"] = sanitizedName
-                    fmData["description"] = trimmedName
-                    newContent = "---\n"
-                    for (key, val) in fmData.sorted(by: { $0.key < $1.key }) {
-                        newContent += "\(key): \(val)\n"
-                    }
-                    newContent += "---\n\n\(parsed.content)"
-                } else {
-                    if newContent.hasPrefix("# \(sourceSkill.name)") {
-                        newContent = "# \(trimmedName)" + newContent.dropFirst("# \(sourceSkill.name)".count)
-                    }
-                }
+                // Change only the name (and a matching `# heading`). Everything else — the
+                // description the agent relies on, lists, nested maps, quoting — stays as
+                // written; rebuilding the block from the parsed values mangled all of those.
+                let newContent = SkillRenamer.renamedContent(
+                    originalContent,
+                    oldDisplayName: sourceSkill.name,
+                    newDisplayName: trimmedName,
+                    identifier: sanitizedName
+                )
 
                 try newContent.write(toFile: filePath, atomically: true, encoding: .utf8)
+
+                // A folder-style skill brings its bundled files (scripts/, references/, …).
+                let sourceURL = URL(fileURLWithPath: sourceSkill.filePath)
+                if itemKind == .skill, !sourceSkill.isRemote,
+                   sourceURL.lastPathComponent.lowercased() == "skill.md" {
+                    let sourceFolder = sourceURL.deletingLastPathComponent()
+                    let items = (try? fm.contentsOfDirectory(atPath: sourceFolder.path)) ?? []
+                    for item in items where item.lowercased() != "skill.md" && item != ".DS_Store" {
+                        try fm.copyItem(
+                            atPath: sourceFolder.appendingPathComponent(item).path,
+                            toPath: "\(basePath)/\(item)"
+                        )
+                    }
+                }
 
                 // If duplicating to Global agent tools, create symlinks to active local agents
                 if itemKind == .skill && selectedTool == .agents {
@@ -314,5 +317,16 @@ struct DuplicateSkillSheet: View {
         if let creationError {
             errorMessage = creationError.localizedDescription
         }
+    }
+
+    /// A remote skill's row holds its parsed frontmatter and body, not the file. Put the
+    /// file back together so the copy keeps its metadata instead of starting bare.
+    static func reassembledRemoteContent(of skill: Skill) -> String {
+        guard !skill.frontmatter.isEmpty else { return skill.content }
+        let frontmatter = skill.frontmatter
+            .sorted { $0.key < $1.key }
+            .map { "\($0.key): \(FrontmatterParser.yamlScalar($0.value))" }
+            .joined(separator: "\n")
+        return "---\n\(frontmatter)\n---\n\n\(skill.content)"
     }
 }

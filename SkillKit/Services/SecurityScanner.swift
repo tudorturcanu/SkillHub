@@ -300,8 +300,10 @@ enum SecurityScanner {
         // or "<!-- TODO -->" are ordinary authoring comments.
         .init("TP1", .toolPoisoning, .high, "Hidden instructions in comment",
               #"<!--(?:(?!-->).)*\b(?:ignore|override|disregard|system\s+prompt|you\s+must|you\s+should\s+(?:now|always)|new\s+instructions?|secretly|exfiltrat\w*|do\s+not\s+(?:tell|reveal|mention|disclose|inform|warn)|always\s+(?:respond|reply|say|answer)|(?:ai|assistant|model|agent)s?\s*:\s)\b(?:(?!-->).)*-->"#),
+        // ZWJ / ZWNJ (U+200D, U+200C) are left out: emoji sequences like 👩‍💻 and
+        // Persian or Indic text need them, and they can't reorder or hide text.
         .init("TP2", .toolPoisoning, .high, "Zero-width / RTL deception characters",
-              #"[\x{200B}\x{200C}\x{200D}\x{202A}-\x{202E}\x{2066}-\x{2069}\x{FEFF}]"#),
+              #"[\x{200B}\x{202A}-\x{202E}\x{2066}-\x{2069}\x{FEFF}]"#),
 
         // --- Code Execution (AST approximations) ---
         .init("AST1", .codeExecution, .critical, "Dynamic code execution (exec)",
@@ -385,7 +387,7 @@ enum SecurityScanner {
         // start, after a pipe/`;`/`&&`, or inside `$(…)`/backticks. "sync 2024"
         // is not netcat.
         .init("E1b", .dataExfiltration, .high, "Pipes data to remote netcat / curl upload",
-              #"(?:^\s*(?:\$\s+)?|[|;&`(]\s*)(?:sudo\s+)?(?:nc|ncat|netcat)\b\s+[^\n]*\b\d{2,5}\b|\bcurl\b[^\n]*(?:--data\S*|--upload-file|(?<=\s)-[dTF])\b[^\n]*https?://"#),
+              #"(?:^\s*(?:\$\s+)?|[|;&`(]\s*)(?:sudo\s+)?(?:nc|ncat|netcat)\b\s+[^\n]*\b\d{2,5}\b|\bcurl\b[^\n]*(?:--data\S*|--upload-file|(?<=\s)(?-i:-[dTF]))\b[^\n]*https?://"#),
 
         // --- Persistence ---
         .init("RA2", .persistence, .high, "Installs persistence (cron/launchd)",
@@ -419,6 +421,9 @@ enum SecurityScanner {
         if target.hasPrefix("$TMPDIR") || target.hasPrefix("${TMPDIR}") { return false }
 
         guard target.hasPrefix("/") else { return false } // relative: build/, ./dist, node_modules …
+
+        // `/tmp/../Users/me` starts in a temp directory but doesn't stay there.
+        if target.split(separator: "/").contains("..") { return true }
 
         let tempPrefixes = [
             "/tmp/", "/private/tmp/", "/var/tmp/", "/private/var/tmp/",
@@ -462,7 +467,9 @@ enum SecurityScanner {
         }
 
         var findings: [SecurityFinding] = []
-        let lines = text.components(separatedBy: .newlines)
+        // Split on "\n" only and drop a CRLF's "\r": `.newlines` would count "\r\n" as two
+        // breaks and double every line number in a Windows file.
+        let lines = text.components(separatedBy: "\n").map { $0.hasSuffix("\r") ? String($0.dropLast()) : $0 }
 
         for (index, line) in lines.enumerated() {
             let range = NSRange(line.startIndex..<line.endIndex, in: line)
@@ -489,9 +496,51 @@ enum SecurityScanner {
             }
         }
 
+        findings += multiLineCommentFindings(in: lines, file: file)
+
         let result = SecurityScanResult(findings: findings, riskScore: score(for: findings))
         scanCache.setObject(CachedScan(result), forKey: cacheKey)
         return result
+    }
+
+    /// The line-by-line pass can't see an HTML comment that spans lines, which is exactly
+    /// how hidden instructions are usually written. Each such comment is joined onto one
+    /// line and checked with the same TP1 rule, and reported at the line that opens it.
+    private static func multiLineCommentFindings(in lines: [String], file: String?) -> [SecurityFinding] {
+        guard let rule = rules.first(where: { $0.id == "TP1" }) else { return [] }
+        var findings: [SecurityFinding] = []
+        var openedAt: Int?
+        var body: [String] = []
+
+        for (index, line) in lines.enumerated() {
+            if let start = openedAt {
+                body.append(line)
+                guard line.contains("-->") else { continue }
+                let joined = body.map { $0.trimmingCharacters(in: .whitespaces) }.joined(separator: " ")
+                let range = NSRange(joined.startIndex..<joined.endIndex, in: joined)
+                if rule.pattern.firstMatch(in: joined, range: range) != nil {
+                    findings.append(SecurityFinding(
+                        ruleID: rule.id,
+                        category: rule.category,
+                        severity: rule.severity,
+                        title: rule.title,
+                        heuristic: rule.heuristic,
+                        lineNumber: start + 1,
+                        snippet: String(joined.prefix(200)),
+                        file: file
+                    ))
+                }
+                openedAt = nil
+                body = []
+            }
+            // A comment opened on this line and not closed after the opener.
+            if let open = line.range(of: "<!--", options: .backwards),
+               !line[open.upperBound...].contains("-->") {
+                openedAt = index
+                body = [String(line[open.lowerBound...])]
+            }
+        }
+        return findings
     }
 
     /// Saturating weighted score, capped at 100. A single critical never

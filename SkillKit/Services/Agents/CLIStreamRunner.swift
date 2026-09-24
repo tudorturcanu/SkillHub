@@ -65,7 +65,7 @@ final class CLIStreamRunner {
 
         var stdoutLog = BoundedTranscript()
         do {
-            for try await line in stdoutPipe.fileHandleForReading.bytes.lines {
+            for try await line in NewlineDelimitedLines(stdoutPipe.fileHandleForReading.bytes) {
                 stdoutLog.append(line)
                 onLine(line)
                 if Task.isCancelled { terminate() }
@@ -86,6 +86,43 @@ final class CLIStreamRunner {
             stderr: AgentDataDecoding.text(from: stderrData) ?? "",
             wasTerminated: terminated || Task.isCancelled
         )
+    }
+}
+
+/// Splits a byte stream into lines at `\n` only (dropping a trailing `\r`).
+///
+/// `AsyncBytes.lines` also breaks at U+2028, U+2029 and U+0085, which JSON encoders
+/// (Node's `JSON.stringify`, serde_json) leave unescaped inside strings. A skill containing
+/// one would split an NDJSON event into two unparseable halves and silently drop it.
+struct NewlineDelimitedLines<Base: AsyncSequence>: AsyncSequence where Base.Element == UInt8 {
+    typealias Element = String
+    let base: Base
+
+    init(_ base: Base) { self.base = base }
+
+    struct AsyncIterator: AsyncIteratorProtocol {
+        var iterator: Base.AsyncIterator
+        var finished = false
+
+        mutating func next() async throws -> String? {
+            guard !finished else { return nil }
+            var buffer: [UInt8] = []
+            while let byte = try await iterator.next() {
+                if byte == 0x0A { return Self.decode(buffer) }
+                buffer.append(byte)
+            }
+            finished = true
+            return buffer.isEmpty ? nil : Self.decode(buffer)
+        }
+
+        private static func decode(_ bytes: [UInt8]) -> String {
+            let trimmed = bytes.last == 0x0D ? bytes.dropLast() : bytes[...]
+            return String(decoding: trimmed, as: UTF8.self)
+        }
+    }
+
+    func makeAsyncIterator() -> AsyncIterator {
+        AsyncIterator(iterator: base.makeAsyncIterator())
     }
 }
 

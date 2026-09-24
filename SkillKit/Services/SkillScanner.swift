@@ -716,7 +716,12 @@ final class SkillScanner {
         let descriptor = FetchDescriptor<Skill>()
         let allSkills = (try? modelContext.fetch(descriptor)) ?? []
         let localSkills = allSkills.filter { !$0.isRemote }
-        let existingByResolved = Dictionary(uniqueKeysWithValues: localSkills.map { ($0.resolvedPath, $0) })
+        // Tolerate duplicate rows (as the incremental path does): `uniqueKeysWithValues`
+        // would crash the app on them.
+        let existingByResolved = Dictionary(
+            localSkills.map { ($0.resolvedPath, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
         let scannedResolvedPaths = Set(groupedResults.keys)
 
         for (resolvedPath, installations) in groupedResults {
@@ -908,12 +913,15 @@ final class SkillScanner {
     @MainActor
     func scanRemoteServer(_ server: RemoteServer) async {
         do {
-            let remoteSkills = try await SSHService.findSkills(server)
-            var foundPaths = Set<String>()
+            let listing = try await SSHService.findSkills(server)
+            // Every path `find` listed counts as present, even if it couldn't be read this
+            // time, so a briefly unreadable skill keeps its favorites and collections.
+            let foundPaths = Set(listing.listedPaths.map {
+                "remote://\(server.id)/\(SSHService.repairLegacyRemotePath($0))"
+            })
 
-            for (path, content) in remoteSkills {
+            for (path, content) in listing.skills {
                 let resolvedPath = "remote://\(server.id)/\(path)"
-                foundPaths.insert(resolvedPath)
 
                 // Rows written before the delimiter-parsing fix stored the path
                 // with a stray "IM:" prefix. Migrate them in place so favorites,

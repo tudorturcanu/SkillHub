@@ -325,7 +325,7 @@ final class AgentBinaryResolver: @unchecked Sendable {
         let fm = FileManager.default
         let nvmDir = "\(home)/.nvm/versions/node"
         if let nodeDirs = try? fm.contentsOfDirectory(atPath: nvmDir) {
-            for nodeDir in nodeDirs.sorted().reversed() {
+            for nodeDir in sortedNewestFirst(nodeDirs) {
                 let binDir = "\(nvmDir)/\(nodeDir)/bin"
                 var isDir: ObjCBool = false
                 if fm.fileExists(atPath: binDir, isDirectory: &isDir), isDir.boolValue {
@@ -334,5 +334,11 @@ final class AgentBinaryResolver: @unchecked Sendable {
             }
         }
         return dirs
+    }
+
+    /// Orders version directory names (`v9.11.2`, `v22.1.0`, …) newest first. Compares
+    /// digit runs numerically — a plain string sort would rank `v9` above `v22`.
+    static func sortedNewestFirst(_ versions: [String]) -> [String] {
+        versions.sorted { $0.compare($1, options: .numeric) == .orderedDescending }
     }
 }

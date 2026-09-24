@@ -1162,8 +1162,8 @@ struct ComposePanel: View {
         Task {
             do {
                 let fp = filePath
-                // Use the editor binding — it's the ground truth the user sees.
-                // readFile(at:) reads disk, which may be stale (auto-save debounce).
+                // Use the editor binding — it's the ground truth the user sees. Disk may
+                // be stale (auto-save debounce).
                 let original = content
                 client.primeDeferredContent(for: fp, content: original)
                 // The agent owns prompt construction (system prompt + file content +
@@ -1188,15 +1188,7 @@ struct ComposePanel: View {
         }
     }
 
-    /// Reads a file off the main actor (UTF-8 with UTF-16 fallback).
-    private func readFile(at path: String) async -> String? {
-        await Task.detached(priority: .userInitiated) {
-            (try? String(contentsOfFile: path, encoding: .utf8))
-                ?? (try? String(contentsOfFile: path, encoding: .utf16))
-        }.value
-    }
-
-    /// Attaches diffs from pending writes or disk changes; logs text-only turns.
+    /// Attaches diffs from the agent's pending writes; text-only turns attach nothing.
     private func handleWrites(client: any AgentSession, messageId: UUID, filePath: String, originalContent: String) async {
         let autoAccept = client.isBypassMode
         agentLog.info("Compose: handleWrites — filePath=\(filePath) originalContent.count=\(originalContent.count) autoAccept=\(autoAccept)")
@@ -1207,23 +1199,10 @@ struct ComposePanel: View {
             return
         }
         client.clearPendingWrites()
-        let newContent = await readFile(at: filePath) ?? originalContent
-        if newContent != originalContent {
-            await attachDiffs(
-                messageId: messageId,
-                writes: [
-                    PendingWrite(
-                        path: filePath,
-                        content: newContent,
-                        originalText: originalContent,
-                        originalData: originalContent.data(using: .utf8),
-                        existedBefore: true
-                    )
-                ],
-                fallbackOriginal: originalContent,
-                autoAccept: autoAccept
-            )
-        }
+        // No disk-diff fallback: both transports run without write access (`--tools ""`,
+        // Codex's read-only sandbox), so a file that changed during the turn changed
+        // because of the user's autosave or another editor. Showing that as the agent's
+        // proposal would misattribute it and block sending until it was "resolved".
     }
 
     /// Converts pending writes into ChatDiff entries and attaches them to the message.
@@ -1289,11 +1268,14 @@ struct ComposePanel: View {
             // Bypass mode: auto-accept all diffs. Disk writes already happened in handleFileWriteRequest.
             let resolvedFilePath = resolvedPath(filePath)
             for i in session.messages[idx].diffs.indices {
-                session.messages[idx].diffs[i].status = .accepted
                 let diff = session.messages[idx].diffs[i]
                 if resolvedPath(diff.path) == resolvedFilePath {
-                    content = diff.proposed
+                    // Leave it pending for review if it no longer fits the editor text.
+                    guard applyToEditor(diff) else { continue }
+                    session.messages[idx].diffs[i].status = .accepted
                     onAccept()
+                } else {
+                    session.messages[idx].diffs[i].status = .accepted
                 }
             }
         }
@@ -1304,10 +1286,10 @@ struct ComposePanel: View {
               diffIndex < messages[msgIdx].diffs.count else { return }
         let diff = messages[msgIdx].diffs[diffIndex]
         if resolvedPath(diff.path) == resolvedPath(filePath) {
-            session.messages[msgIdx].diffs[diffIndex].status = .accepted
             // Currently-open file: update editor binding, onAccept() persists to disk.
             // Direct-CLI agents already wrote to disk; skip re-persist to avoid a redundant write.
-            content = diff.proposed
+            guard applyToEditor(diff) else { return }
+            session.messages[msgIdx].diffs[diffIndex].status = .accepted
             if !diff.agentDidWrite {
                 onAccept()
             }
@@ -1340,6 +1322,25 @@ struct ComposePanel: View {
         }
     }
 
+    /// Puts an accepted edit into the editor without discarding what the user typed after
+    /// sending the prompt. Returns false (and explains) when the edit no longer fits the
+    /// current text; the diff then stays pending.
+    private func applyToEditor(_ diff: ChatDiff) -> Bool {
+        guard let original = diff.original else {
+            content = diff.proposed
+            return true
+        }
+        if let rebased = EditRebase.apply(original: original, proposed: diff.proposed, onto: content) {
+            content = rebased
+            return true
+        }
+        let fileName = URL(fileURLWithPath: diff.path).lastPathComponent
+        diffApplyError = DiffApplyError(
+            message: "\(fileName) changed since this edit was proposed, in the same place the edit touches. Ask again to get an edit against the current text."
+        )
+        return false
+    }
+
     private func rejectDiff(messageId: UUID, diffIndex: Int) {
         guard let msgIdx = messages.firstIndex(where: { $0.id == messageId }),
               diffIndex < messages[msgIdx].diffs.count else { return }
@@ -1370,7 +1371,8 @@ struct ComposePanel: View {
     /// Restores a file to its pre-write state. If the file didn't exist before, removes it.
     nonisolated private static func revertWrittenDiff(_ diff: ChatDiff) async throws {
         try await Task.detached(priority: .userInitiated) {
-            let url = URL(fileURLWithPath: diff.path)
+            // Through any symlink: an atomic write would replace the link with a copy.
+            let url = URL(fileURLWithPath: diff.path).resolvingSymlinksInPath()
             if diff.existedBefore {
                 if let originalData = diff.originalData {
                     try originalData.write(to: url, options: .atomic)
@@ -1391,7 +1393,8 @@ struct ComposePanel: View {
 
     nonisolated private static func persistAcceptedDiff(_ diff: ChatDiff) async throws {
         try await Task.detached(priority: .userInitiated) {
-            let url = URL(fileURLWithPath: diff.path)
+            // Through any symlink: an atomic write would replace the link with a copy.
+            let url = URL(fileURLWithPath: diff.path).resolvingSymlinksInPath()
             let parent = url.deletingLastPathComponent()
             if !FileManager.default.fileExists(atPath: parent.path) {
                 try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true, attributes: nil)

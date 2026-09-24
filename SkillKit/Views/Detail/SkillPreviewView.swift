@@ -90,7 +90,16 @@ private struct MarkdownWebView: NSViewRepresentable {
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
             if navigationAction.navigationType == .linkActivated,
                let url = navigationAction.request.url {
-                NSWorkspace.shared.open(url)
+                // In-page anchors (`[see below](#usage)`) resolve against about:blank.
+                if url.scheme == "about", url.fragment != nil {
+                    decisionHandler(.allow)
+                    return
+                }
+                // Skills can come from the community registry, so only hand off links
+                // that open in a browser or mail client — never custom app schemes.
+                if url.isSafeToOpenFromRenderedMarkdown {
+                    NSWorkspace.shared.open(url)
+                }
                 decisionHandler(.cancel)
             } else {
                 decisionHandler(.allow)
@@ -330,12 +339,12 @@ private enum RawFrontmatterParser {
     static func parse(_ text: String) -> Result? {
         let lines = text.components(separatedBy: "\n")
 
-        guard lines.first?.trimmingCharacters(in: .whitespaces) == "---" else {
+        guard lines.first?.trimmingCharacters(in: .whitespacesAndNewlines) == "---" else {
             return nil
         }
 
         for index in 1..<lines.count {
-            if lines[index].trimmingCharacters(in: .whitespaces) == "---" {
+            if lines[index].trimmingCharacters(in: .whitespacesAndNewlines) == "---" {
                 let frontmatterLines = Array(lines[1..<index])
                 let frontmatter = frontmatterLines.joined(separator: "\n")
                     .trimmingCharacters(in: .whitespacesAndNewlines)

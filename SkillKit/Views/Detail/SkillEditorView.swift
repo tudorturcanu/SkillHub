@@ -19,8 +19,19 @@ final class SkillEditorDocument {
     /// When this document last wrote successfully (local or remote). Reset on load.
     var lastSaveDate: Date?
 
+    /// Set when a save was held back because the file changed on disk since it was loaded
+    /// or last saved (another editor saving in place doesn't touch the folder, so the
+    /// watcher may never report it). The detail view shows its Reload / Keep Mine bar.
+    var hasSaveConflict = false
+    /// The last load couldn't read the file. Saving is refused so a stand-in buffer can
+    /// never overwrite the real file.
+    private(set) var loadFailed = false
+
     private var fullFileContent: String = ""
     private var isLoading = false
+
+    /// True while a load is in flight and `editorContent` still holds the previous item.
+    var isLoadingContent: Bool { isLoading }
     private var loadTask: Task<Void, Never>?
     private var loadGeneration = 0
 
@@ -33,6 +44,13 @@ final class SkillEditorDocument {
     }
 
     func save(to skill: Skill) {
+        // While a load is in flight the buffer still holds the *previous* skill's text.
+        guard !isLoading else { return }
+        guard !loadFailed else {
+            saveErrorMessage = "SkillKit couldn't read this file, so saving is turned off to avoid overwriting it. Select the item again to retry."
+            showingSaveError = true
+            return
+        }
         if skill.isRemote {
             saveRemote(skill)
         } else {
@@ -59,6 +77,15 @@ final class SkillEditorDocument {
         }
     }
 
+    /// Keep Mine: treat what's on disk now as the version being replaced, so the next save
+    /// overwrites it deliberately instead of raising the conflict again.
+    func adoptDiskVersionAsBaseline(for skill: Skill) {
+        hasSaveConflict = false
+        guard !skill.isRemote, let onDisk = Self.readLocalFile(at: skill.filePath) else { return }
+        fullFileContent = onDisk
+        hasUnsavedChanges = editorContent != onDisk
+    }
+
     // MARK: - Local
 
     /// The bookmarked root that grants sandbox access to `path`.
@@ -80,20 +107,18 @@ final class SkillEditorDocument {
         loadGeneration += 1
 
         let path = skill.filePath
-        let fallback = skill.content
         let generation = loadGeneration
 
         loadTask = Task.detached { [weak self] in
             let start = CFAbsoluteTimeGetCurrent()
             let parentPath = Self.accessRoot(for: path)
 
+            // No fallback to `skill.content` on failure: that is only the body, so a save
+            // after it would strip the frontmatter from disk. An empty file loads as empty.
             let data = SandboxBookmarkManager.resolveAndAccess(path: parentPath) { _ in
-                if let fileData = try? String(contentsOfFile: path, encoding: .utf8) {
-                    return fileData
-                }
-                return ""
+                try? String(contentsOfFile: path, encoding: .utf8)
             }
-            let finalData = data.isEmpty && !fallback.isEmpty ? fallback : data
+            let finalData = data ?? ""
             guard !Task.isCancelled else { return }
             let elapsed = CFAbsoluteTimeGetCurrent() - start
             AppLogger.fileIO.notice("Loaded \(path) in \(String(format: "%.3f", elapsed))s (\(finalData.count) chars)")
@@ -104,9 +129,14 @@ final class SkillEditorDocument {
                 self.fullFileContent = finalData
                 self.isLoading = false
                 self.hasUnsavedChanges = false
+                self.hasSaveConflict = false
+                self.loadFailed = data == nil
                 self.showingSaveError = false
                 self.saveErrorMessage = ""
                 self.lastSaveDate = nil
+                if data == nil {
+                    AppLogger.fileIO.error("Couldn't read \(path); saving disabled until it loads")
+                }
             }
         }
     }
@@ -116,10 +146,19 @@ final class SkillEditorDocument {
         let parentPath = Self.accessRoot(for: path)
 
         SandboxBookmarkManager.resolveAndAccess(path: parentPath) { _ in
+            // Another editor may have saved in place since we loaded; don't write over it.
+            if let onDisk = Self.readLocalFile(at: path), onDisk != fullFileContent {
+                AppLogger.fileIO.notice("Held back save of \(path): file changed on disk")
+                hasSaveConflict = true
+                return
+            }
             do {
                 SkillVersionHistory.recordSnapshot(for: skill, content: fullFileContent, reason: "Before save")
                 SkillScanner.active?.ignoreNextChange(for: skill.filePath)
-                try editorContent.write(toFile: skill.filePath, atomically: true, encoding: .utf8)
+                // Write to the link's target: an atomic write renames a temp file over the
+                // path, which would replace a symlink (into a dotfiles repo, say) with a copy.
+                let writePath = URL(fileURLWithPath: path).resolvingSymlinksInPath().path
+                try editorContent.write(toFile: writePath, atomically: true, encoding: .utf8)
                 fullFileContent = editorContent
                 hasUnsavedChanges = false
                 lastSaveDate = .now
@@ -150,6 +189,7 @@ final class SkillEditorDocument {
         guard let server = skill.remoteServer, let remotePath = skill.remotePath else {
             editorContent = skill.content
             fullFileContent = skill.content
+            loadFailed = true
             return
         }
 
@@ -172,6 +212,7 @@ final class SkillEditorDocument {
                     isLoading = false
                     isLoadingRemote = false
                     hasUnsavedChanges = false
+                    loadFailed = false
                     showingSaveError = false
                     saveErrorMessage = ""
                     lastSaveDate = nil
@@ -180,11 +221,14 @@ final class SkillEditorDocument {
                 guard !Task.isCancelled, loadGeneration == generation else { return }
                 await MainActor.run {
                     guard self.loadGeneration == generation else { return }
+                    // Show the cached body so there's something to read, but never save it:
+                    // it lacks the frontmatter and may be out of date.
                     editorContent = fallbackContent
                     fullFileContent = fallbackContent
                     isLoading = false
                     isLoadingRemote = false
                     hasUnsavedChanges = false
+                    loadFailed = true
                     saveErrorMessage = "Failed to load from server: \(error.localizedDescription)"
                     showingSaveError = true
                 }

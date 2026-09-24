@@ -156,6 +156,9 @@ struct SkillDetailView: View {
                     onAccept: { document.save(to: skill) }
                 )
                 .id(skill.filePath)
+                // Until the file loads, `content` is the previous item's text: a prompt
+                // sent now would edit the wrong file.
+                .disabled(document.isLoadingContent)
             }
 
             Divider()
@@ -189,6 +192,11 @@ struct SkillDetailView: View {
         }
         .onChange(of: document.editorContent) {
             scheduleAutosave()
+        }
+        .onChange(of: document.hasSaveConflict) { _, conflicted in
+            // A save found the file changed on disk: let the user choose, as for a
+            // change the watcher reported.
+            if conflicted { showingExternalChangeBar = true }
         }
         .onDisappear {
             flushPendingSave()
@@ -260,6 +268,31 @@ struct SkillDetailView: View {
                 .pickerStyle(.segmented)
                 .help("Switch view mode: Edit, Preview, or Prompt Playground")
                 .accessibilityLabel("View mode")
+            }
+            ToolbarItem {
+                let outline = MarkdownOutline.headings(in: document.editorContent)
+                Menu {
+                    if outline.isEmpty {
+                        Text("No headings")
+                    } else {
+                        ForEach(outline) { heading in
+                            Button {
+                                NotificationCenter.default.post(
+                                    name: .jumpToEditorLine,
+                                    object: nil,
+                                    userInfo: ["line": heading.line]
+                                )
+                            } label: {
+                                Text(String(repeating: "    ", count: heading.level - outline.minLevel) + heading.title)
+                            }
+                        }
+                    }
+                } label: {
+                    Image(systemName: "list.bullet.indent")
+                }
+                .disabled(document.isLoadingContent)
+                .help("Jump to a heading in this document")
+                .accessibilityLabel("Outline")
             }
             ToolbarItem {
                 Button {
@@ -531,6 +564,9 @@ struct SkillDetailView: View {
 
     private func keepLocalEdits() {
         showingExternalChangeBar = false
+        // The version on disk is the one being replaced now; without this the next save
+        // would see it as a fresh external change and raise the bar again.
+        document.adoptDiskVersionAsBaseline(for: skill)
         // Re-arm the autosave that was held back while the bar was visible.
         scheduleAutosave()
     }
@@ -606,4 +642,49 @@ private struct SkillLintFixesView: View {
         .padding()
         .frame(width: 360, alignment: .leading)
     }
+}
+
+/// The Markdown headings of a document, for the editor's Outline menu. Skips the
+/// frontmatter block and fenced code so `# comments` in shell snippets don't show up.
+struct MarkdownOutline {
+    struct Heading: Identifiable {
+        let line: Int  // 1-based, matching jump-to-line
+        let level: Int
+        let title: String
+        var id: Int { line }
+    }
+
+    static func headings(in text: String) -> [Heading] {
+        var result: [Heading] = []
+        var fence: String?
+        var inFrontmatter = false
+        for (index, raw) in text.components(separatedBy: "\n").enumerated() {
+            let line = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            if index == 0 && line == "---" { inFrontmatter = true; continue }
+            if inFrontmatter {
+                if line == "---" || line == "..." { inFrontmatter = false }
+                continue
+            }
+            if let open = fence {
+                if line.hasPrefix(open) { fence = nil }
+                continue
+            }
+            if line.hasPrefix("```") { fence = "```"; continue }
+            if line.hasPrefix("~~~") { fence = "~~~"; continue }
+            let hashes = line.prefix { $0 == "#" }.count
+            guard (1...6).contains(hashes) else { continue }
+            let rest = line.dropFirst(hashes)
+            guard rest.first == " " else { continue }
+            var title = rest.trimmingCharacters(in: .whitespaces)
+            while title.hasSuffix("#") { title.removeLast() }
+            title = title.trimmingCharacters(in: .whitespaces)
+            guard !title.isEmpty else { continue }
+            result.append(Heading(line: index + 1, level: hashes, title: title))
+        }
+        return result
+    }
+}
+
+extension Array where Element == MarkdownOutline.Heading {
+    var minLevel: Int { map(\.level).min() ?? 1 }
 }

@@ -492,7 +492,9 @@ enum SkillRenamer {
                     identifier: newIdentifier
                 )
                 if updated != content {
-                    try updated.write(toFile: path, atomically: true, encoding: .utf8)
+                    // Through any symlink, so the link itself survives the rename.
+                    let target = URL(fileURLWithPath: path).resolvingSymlinksInPath().path
+                    try updated.write(toFile: target, atomically: true, encoding: .utf8)
                 }
             }
         } catch {
@@ -586,22 +588,24 @@ enum SkillRenamer {
         (try? fileManager.attributesOfItem(atPath: url.path)) != nil
     }
 
-    private static func renamedContent(
+    static func renamedContent(
         _ content: String,
         oldDisplayName: String,
         newDisplayName: String,
         identifier: String
     ) -> String {
         var lines = content.components(separatedBy: "\n")
-        if lines.first?.trimmingCharacters(in: .whitespaces) == "---",
-           let end = lines.dropFirst().firstIndex(where: { $0.trimmingCharacters(in: .whitespaces) == "---" }) {
+        if lines.first?.trimmingCharacters(in: .whitespacesAndNewlines) == "---",
+           let end = lines.dropFirst().firstIndex(where: { $0.trimmingCharacters(in: .whitespacesAndNewlines) == "---" }) {
             if let nameIndex = lines[1..<end].firstIndex(where: {
                 $0.trimmingCharacters(in: .whitespaces).hasPrefix("name:")
             }) {
                 let indentation = String(lines[nameIndex].prefix { $0 == " " || $0 == "\t" })
-                lines[nameIndex] = "\(indentation)name: \(yamlScalar(identifier))"
+                let lineEnd = lines[nameIndex].hasSuffix("\r") ? "\r" : ""
+                lines[nameIndex] = "\(indentation)name: \(yamlScalar(identifier))\(lineEnd)"
             } else {
-                lines.insert("name: \(yamlScalar(identifier))", at: 1)
+                let lineEnd = lines[0].hasSuffix("\r") ? "\r" : ""
+                lines.insert("name: \(yamlScalar(identifier))\(lineEnd)", at: 1)
             }
         }
 
@@ -615,13 +619,7 @@ enum SkillRenamer {
     }
 
     private static func yamlScalar(_ value: String) -> String {
-        let needsQuotes = value.contains(":") || value.contains("#") || value.contains("\"")
-            || value.first.map { "[]{}&*!|>'%@`-?".contains($0) } == true
-        guard needsQuotes else { return value }
-        let escaped = value
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
-        return "\"\(escaped)\""
+        FrontmatterParser.yamlScalar(value)
     }
 }
 

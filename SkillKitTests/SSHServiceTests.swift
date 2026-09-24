@@ -104,3 +104,77 @@ extension SSHServiceTests {
         XCTAssertEqual(SSHService.repairLegacyRemotePath(""), "")
     }
 }
+
+// MARK: - Remote read command, run through a real shell
+
+extension SSHServiceTests {
+
+    private func runLocally(_ command: String) throws -> String {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/sh")
+        process.arguments = ["-c", command]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+        try process.run()
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        return String(decoding: data, as: UTF8.self)
+    }
+
+    func testReadCommandRoundTripsContentExactly() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SSHReadCommand-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let files: [(name: String, content: String)] = [
+            ("no-newline.md", "---\nname: a\n---\nlast line without newline"),
+            ("tom's notes.md", "body\n"),
+            ("empty.md", ""),
+            ("blank-tail.md", "x\n\n"),
+        ]
+        var paths: [String] = []
+        for file in files {
+            let url = dir.appendingPathComponent(file.name)
+            try file.content.write(to: url, atomically: true, encoding: .utf8)
+            paths.append(url.path)
+        }
+
+        let blocks = SSHService.parseDelimitedOutput(try runLocally(SSHService.readCommand(for: paths)))
+
+        XCTAssertEqual(blocks.map(\.path), paths)
+        XCTAssertEqual(blocks.map(\.content), files.map(\.content))
+    }
+
+    /// One unreadable file used to stop every read after it (`&&` chain), and the sync
+    /// then deleted the rows for all the skills it never received.
+    func testReadCommandSkipsUnreadableFilesAndKeepsGoing() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SSHReadCommand-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let first = dir.appendingPathComponent("a.md")
+        let second = dir.appendingPathComponent("b.md")
+        try "a".write(to: first, atomically: true, encoding: .utf8)
+        try "b".write(to: second, atomically: true, encoding: .utf8)
+        let missing = dir.appendingPathComponent("gone.md").path
+
+        let blocks = SSHService.parseDelimitedOutput(
+            try runLocally(SSHService.readCommand(for: [first.path, missing, second.path]))
+        )
+
+        XCTAssertEqual(blocks.map(\.path), [first.path, second.path])
+        XCTAssertEqual(blocks.map(\.content), ["a", "b"])
+    }
+
+    func testShellQuotePathKeepsUserTextLiteral() throws {
+        XCTAssertEqual(SSHService.shellQuotePath("~/.agents/skills"), "\"$HOME/.agents/skills\"")
+        XCTAssertEqual(SSHService.shellQuotePath("~"), "\"$HOME\"")
+
+        let hostile = "/srv/$(touch pwned)/`id`/a\"b\\"
+        let echoed = try runLocally("printf %s \(SSHService.shellQuotePath(hostile))")
+        XCTAssertEqual(echoed, hostile)
+    }
+}

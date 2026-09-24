@@ -160,11 +160,11 @@ final class SkillExporter {
         }
     }
 
-    private func serializedContent(for skill: ExportSkill) -> String {
+    func serializedContent(for skill: ExportSkill) -> String {
         guard !skill.frontmatter.isEmpty else { return skill.content }
         let frontmatter = skill.frontmatter
             .sorted { $0.key < $1.key }
-            .map { "\($0.key): \($0.value)" }
+            .map { "\($0.key): \(FrontmatterParser.yamlScalar($0.value))" }
             .joined(separator: "\n")
         return "---\n\(frontmatter)\n---\n\n\(skill.content)"
     }

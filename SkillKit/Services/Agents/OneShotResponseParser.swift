@@ -12,6 +12,10 @@ enum OneShotResponseParser {
         let newContent: String?
     }
 
+    struct EditApplyError: LocalizedError {
+        let errorDescription: String?
+    }
+
     /// Decoded shape of the structured-edits JSON format.
     private struct EditsResponse: Decodable {
         let summary: String
@@ -31,56 +35,73 @@ enum OneShotResponseParser {
             if parsed.edits.isEmpty {
                 return Result(summary: parsed.summary, newContent: nil)
             }
-            if let original = originalContent,
-               let applied = try? applyEdits(parsed.edits, to: original) {
-                return Result(summary: parsed.summary, newContent: applied)
+            guard let original = originalContent else {
+                return Result(summary: parsed.summary, newContent: nil)
             }
-            return Result(summary: parsed.summary, newContent: nil)
+            do {
+                return Result(summary: parsed.summary, newContent: try applyEdits(parsed.edits, to: original))
+            } catch {
+                // Say so: a summary like "Updated X" with no diff looks like a silent success.
+                return Result(
+                    summary: parsed.summary + "\n\n(The edit couldn't be applied: \(error.localizedDescription))",
+                    newContent: nil
+                )
+            }
         }
 
         // 2. Fall back to summary + fenced full-file block.
-        guard let openingRange = openingFenceRange(in: text) else {
+        guard let block = trailingFencedBlock(in: text) else {
+            // No block, or prose after it: a conversational answer, possibly quoting
+            // snippets. A snippet must never be mistaken for the whole file.
+            return Result(summary: text.trimmingCharacters(in: .whitespacesAndNewlines), newContent: nil)
+        }
+        guard looksLikeWholeFile(block.body, original: originalContent) else {
             return Result(
-                summary: text.trimmingCharacters(in: .whitespacesAndNewlines),
+                summary: block.summary + "\n\n(The reply's code block doesn't look like the complete file, so no edit was proposed. Ask for the full updated file to get one.)",
                 newContent: nil
             )
         }
-        let summary = String(text[..<openingRange.lowerBound])
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        let afterOpening = String(text[openingRange.upperBound...])
-        if let closingRange = lastClosingFenceRange(in: afterOpening) {
-            return Result(
-                summary: summary,
-                newContent: String(afterOpening[..<closingRange.lowerBound])
-            )
+        return Result(summary: block.summary, newContent: block.body)
+    }
+
+    /// The reply format is "summary, then one fenced block holding the whole file", so the
+    /// block must be the last thing in the reply. The closing fence has to match the
+    /// opener (same character, at least as long), which lets a ```` fence wrap a file that
+    /// contains its own ``` examples.
+    static func trailingFencedBlock(in text: String) -> (summary: String, body: String)? {
+        let pattern = #"(?m)^(`{3,}|~{3,})[A-Za-z0-9_+.-]*[ \t]*\n"#
+        guard let regex = try? NSRegularExpression(pattern: pattern),
+              let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+              let openRange = Range(match.range, in: text),
+              let fenceRange = Range(match.range(at: 1), in: text) else { return nil }
+        let fence = text[fenceRange]
+        let summary = String(text[..<openRange.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+
+        var lines = String(text[openRange.upperBound...]).components(separatedBy: "\n")
+        // Drop trailing blank lines, then the last line must close the fence.
+        while let last = lines.last, last.trimmingCharacters(in: .whitespaces).isEmpty { lines.removeLast() }
+        guard let closing = lines.last?.trimmingCharacters(in: .whitespaces),
+              closing.count >= fence.count,
+              closing.allSatisfy({ $0 == fence.first }) else { return nil }
+        lines.removeLast()
+        return (summary, lines.isEmpty ? "" : lines.joined(separator: "\n") + "\n")
+    }
+
+    /// Guards against proposing a fragment as the new file: one that drops the frontmatter
+    /// the file had, or keeps less than a quarter of a file of any size.
+    static func looksLikeWholeFile(_ candidate: String, original: String?) -> Bool {
+        guard let original, !original.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return true }
+        func opensFrontmatter(_ text: String) -> Bool {
+            text.components(separatedBy: "\n").first?.trimmingCharacters(in: .whitespacesAndNewlines) == "---"
         }
-        return Result(summary: summary, newContent: String(afterOpening))
+        if opensFrontmatter(original), !opensFrontmatter(candidate) { return false }
+        let originalLines = original.components(separatedBy: "\n").count
+        let candidateLines = candidate.components(separatedBy: "\n").count
+        if originalLines >= 12, candidateLines * 4 < originalLines { return false }
+        return true
     }
 
     // MARK: - Internals
-
-    private static func openingFenceRange(in text: String) -> Range<String.Index>? {
-        // ``` at start-of-string or after a newline, optional language hint, then newline.
-        let pattern = #"(?m)^```[a-zA-Z0-9_-]*\n"#
-        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
-        let ns = text as NSString
-        let match = regex.rangeOfFirstMatch(in: text, range: NSRange(location: 0, length: ns.length))
-        guard match.location != NSNotFound,
-              let r = Range(match, in: text) else { return nil }
-        return r
-    }
-
-    private static func lastClosingFenceRange(in text: String) -> Range<String.Index>? {
-        // Use the last fence line as the wrapper close so Markdown files containing their
-        // own fenced examples do not get truncated at the first inner code block.
-        let pattern = #"(?m)^```\s*$"#
-        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
-        let ns = text as NSString
-        let matches = regex.matches(in: text, range: NSRange(location: 0, length: ns.length))
-        guard let last = matches.last,
-              let r = Range(last.range, in: text) else { return nil }
-        return r
-    }
 
     private static func stripCodeFences(_ text: String) -> String {
         var s = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -106,16 +127,16 @@ enum OneShotResponseParser {
             }
             switch occurrences {
             case 0:
-                throw AgentError.launchFailed(
-                    "Edit #\(i + 1): the `find` text doesn't appear in the file. Proposed:\n\n\(edit.find.prefix(300))"
+                throw EditApplyError(
+                    errorDescription: "edit #\(i + 1)'s `find` text doesn't appear in the file:\n\n\(edit.find.prefix(300))"
                 )
             case 1:
                 if let r = content.range(of: edit.find) {
                     content.replaceSubrange(r, with: edit.replace)
                 }
             default:
-                throw AgentError.launchFailed(
-                    "Edit #\(i + 1): the `find` text appears more than once — needs more surrounding context to be unique."
+                throw EditApplyError(
+                    errorDescription: "edit #\(i + 1)'s `find` text appears more than once, so it needs more surrounding context to be unique."
                 )
             }
         }

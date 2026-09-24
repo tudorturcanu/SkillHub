@@ -76,3 +76,46 @@ final class FrontmatterParserTests: XCTestCase {
         XCTAssertEqual(result.description, "Description text")
     }
 }
+
+// MARK: - Line endings and indentation
+
+extension FrontmatterParserTests {
+
+    func testParsesCRLFFrontmatter() {
+        let result = FrontmatterParser.parse("---\r\nname: crlf\r\ndescription: Windows file\r\n---\r\nbody\r\n")
+        XCTAssertEqual(result.name, "crlf")
+        XCTAssertEqual(result.description, "Windows file")
+        XCTAssertEqual(result.content, "body")
+    }
+
+    func testIndentedColonLinesStayInsideBlockScalar() {
+        let input = """
+        ---
+        name: scalar
+        description: |
+          Use this.
+          Note: careful
+          https://example.com
+        ---
+        body
+        """
+        let result = FrontmatterParser.parse(input)
+        XCTAssertEqual(result.description, "Use this.\n  Note: careful\n  https://example.com")
+        XCTAssertNil(result.frontmatter["Note"])
+        XCTAssertNil(result.frontmatter["https"])
+    }
+
+    func testNestedKeyDoesNotOverrideTopLevelName() {
+        let input = """
+        ---
+        name: outer
+        metadata:
+          name: inner
+        description: after nested map
+        ---
+        """
+        let result = FrontmatterParser.parse(input)
+        XCTAssertEqual(result.name, "outer")
+        XCTAssertEqual(result.description, "after nested map")
+    }
+}

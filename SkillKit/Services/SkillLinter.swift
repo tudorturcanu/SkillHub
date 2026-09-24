@@ -150,25 +150,27 @@ enum SkillLinter {
     // MARK: - Frontmatter
 
     static func startsWithFrontmatterDelimiter(_ content: String) -> Bool {
-        content.components(separatedBy: "\n").first?.trimmingCharacters(in: .whitespaces) == "---"
+        content.components(separatedBy: "\n").first?.trimmingCharacters(in: .whitespacesAndNewlines) == "---"
     }
 
     /// `true` when the file opens with `---` but no closing `---` line follows.
     static func hasUnterminatedFrontmatter(_ content: String) -> Bool {
         let lines = content.components(separatedBy: "\n")
-        guard lines.first?.trimmingCharacters(in: .whitespaces) == "---" else { return false }
-        return !lines.dropFirst().contains { $0.trimmingCharacters(in: .whitespaces) == "---" }
+        guard lines.first?.trimmingCharacters(in: .whitespacesAndNewlines) == "---" else { return false }
+        return !lines.dropFirst().contains { $0.trimmingCharacters(in: .whitespacesAndNewlines) == "---" }
     }
 
     private static func metadataFix(id: String, title: String, message: String, key: String, value: String) -> SkillLintFix {
         SkillLintFix(id: id, title: title, message: message) { content, _ in
             var lines = content.components(separatedBy: "\n")
-            guard lines.first?.trimmingCharacters(in: .whitespaces) == "---" else { return content }
+            guard lines.first?.trimmingCharacters(in: .whitespacesAndNewlines) == "---" else { return content }
 
             let cleanValue = cleanMetadataValue(value)
+            // Match the file's line endings so a CRLF file stays consistently CRLF.
+            let lineEnd = lines.first?.hasSuffix("\r") == true ? "\r" : ""
             for index in 1..<lines.count {
-                if lines[index].trimmingCharacters(in: .whitespaces) == "---" {
-                    lines.insert("\(key): \(cleanValue)", at: index)
+                if lines[index].trimmingCharacters(in: .whitespacesAndNewlines) == "---" {
+                    lines.insert("\(key): \(cleanValue)\(lineEnd)", at: index)
                     return lines.joined(separator: "\n")
                 }
             }
@@ -277,7 +279,9 @@ enum SkillLinter {
     }
 
     private static let deceptiveUnicodeScalars: Set<UInt32> = [
-        0x200B, 0x200C, 0x200D, 0x202A, 0x202B, 0x202C, 0x202D, 0x202E,
+        // ZWJ / ZWNJ are omitted to match the scanner's TP2 rule: removing them would
+        // split emoji like 👩‍💻 and break Persian or Indic text.
+        0x200B, 0x202A, 0x202B, 0x202C, 0x202D, 0x202E,
         0x2066, 0x2067, 0x2068, 0x2069, 0xFEFF,
     ]
 }

@@ -22,6 +22,17 @@ enum MarkdownRenderer {
     }
 }
 
+extension URL {
+    /// Whether a link found in rendered skill or agent Markdown may be handed to the
+    /// system. Only browser and mail links qualify: skills can come from the community
+    /// registry, and a custom app scheme (`vscode://`, `x-apple.systempreferences:`, …)
+    /// would let a single click drive another app.
+    var isSafeToOpenFromRenderedMarkdown: Bool {
+        guard let scheme = scheme?.lowercased() else { return false }
+        return ["http", "https", "mailto"].contains(scheme)
+    }
+}
+
 private final class PreviewCodeHighlighter {
     static let shared = PreviewCodeHighlighter()
 

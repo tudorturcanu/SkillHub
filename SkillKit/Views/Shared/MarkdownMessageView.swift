@@ -9,6 +9,9 @@ struct MarkdownMessageView: View {
             .textSelection(.enabled)
             .frame(maxWidth: .infinity, alignment: .leading)
             .fixedSize(horizontal: false, vertical: true)
+            .environment(\.openURL, OpenURLAction { url in
+                url.isSafeToOpenFromRenderedMarkdown ? .systemAction : .discarded
+            })
             .task(id: text) {
                 let normalized = normalize(text)
                 attributed = (try? AttributedString(markdown: normalized, options: .init(

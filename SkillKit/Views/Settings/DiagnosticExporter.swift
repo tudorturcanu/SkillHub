@@ -103,7 +103,18 @@ enum DiagnosticExporter {
             lines.append("(Unable to collect logs)")
         }
 
-        return lines.joined(separator: "\n")
+        return redactingHomeDirectory(lines.joined(separator: "\n"), home: AppPaths.userHomeDirectory)
+    }
+
+    /// Replaces the user's home directory with `~` so a report shared in a bug tracker
+    /// doesn't carry the account name in every path and log line.
+    static func redactingHomeDirectory(_ text: String, home: String) -> String {
+        let home = home.hasSuffix("/") ? String(home.dropLast()) : home
+        guard home.count > 1 else { return text }
+        let escaped = NSRegularExpression.escapedPattern(for: home)
+        // Only whole path components: `/Users/al` must not eat into `/Users/alice` or
+        // `/Users/al-backup`.
+        return text.replacingOccurrences(of: escaped + #"(?![\w.-])"#, with: "~", options: .regularExpression)
     }
 
     @MainActor

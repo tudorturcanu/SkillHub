@@ -99,3 +99,66 @@ final class SkillExporterTests: XCTestCase {
         XCTAssertNil(item.collections)
     }
 }
+
+// MARK: - Frontmatter written on import
+
+extension SkillExporterTests {
+
+    /// Import used to write already-unquoted values back bare, so
+    /// `description: Use when: the user asks` came out as invalid YAML.
+    @MainActor
+    func testImportedFrontmatterRoundTripsTrickyValues() {
+        let frontmatter = [
+            "name": "tricky",
+            "description": "Use when: the user asks",
+            "note": "# not a comment",
+            "quote": "say \"hi\" \\ bye",
+            "multi": "line one\nline two",
+            "url": "https://example.com/a",
+        ]
+        let skill = Skill(
+            filePath: "/tmp/tricky/SKILL.md", toolSource: .claude, isDirectory: true,
+            name: "tricky", skillDescription: "", content: "Body", frontmatter: frontmatter,
+            fileModifiedDate: .now, fileSize: 1, isGlobal: true,
+            resolvedPath: "/tmp/tricky/SKILL.md", kind: .skill
+        )
+
+        let written = SkillExporter.shared.serializedContent(for: .init(from: skill))
+
+        XCTAssertTrue(written.contains("description: \"Use when: the user asks\""), written)
+        XCTAssertTrue(written.contains("url: https://example.com/a"), "plain URLs need no quotes")
+        XCTAssertEqual(FrontmatterParser.parse(written).frontmatter, frontmatter)
+    }
+
+    func testYAMLScalarLeavesPlainValuesAlone() {
+        XCTAssertEqual(FrontmatterParser.yamlScalar("git-flow"), "git-flow")
+        XCTAssertEqual(FrontmatterParser.yamlScalar(""), "\"\"")
+        XCTAssertEqual(FrontmatterParser.yamlScalar("- dash"), "\"- dash\"")
+    }
+}
+
+// MARK: - Duplicate keeps the original frontmatter
+
+extension SkillExporterTests {
+
+    func testDuplicateRenameKeepsDescriptionListsAndNestedMaps() {
+        let original = """
+        ---
+        name: pdf-tools
+        description: "Use when: the user shares a PDF"
+        allowed-tools:
+          - Bash
+          - Read
+        metadata:
+          version: 2
+        ---
+        # PDF Tools
+
+        Body
+        """
+        let copy = SkillRenamer.renamedContent(original, oldDisplayName: "PDF Tools", newDisplayName: "PDF Tools Copy", identifier: "pdf-tools-copy")
+        XCTAssertEqual(copy, original
+            .replacingOccurrences(of: "name: pdf-tools", with: "name: pdf-tools-copy")
+            .replacingOccurrences(of: "# PDF Tools", with: "# PDF Tools Copy"))
+    }
+}

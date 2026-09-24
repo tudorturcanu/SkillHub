@@ -42,7 +42,9 @@ enum SSHService {
             }
         }
 
-        args.append(server.sshDestination)
+        // `--` ends option parsing, so a destination starting with `-` can't be read as
+        // an ssh option such as `-oProxyCommand=…`.
+        args += ["--", server.sshDestination]
         return args
     }
 
@@ -63,20 +65,35 @@ enum SSHService {
     }
 
     /// Escapes a path for the remote shell, handling tilde expansion.
-    /// Uses double quotes so `$HOME` expands while spaces are preserved.
-    private static func shellQuotePath(_ path: String) -> String {
-        var expanded = path
-        if expanded.hasPrefix("~/") {
-            expanded = "$HOME/" + expanded.dropFirst(2)
-        } else if expanded == "~" {
-            expanded = "$HOME"
+    /// Uses double quotes so a leading `~` can become `$HOME` while spaces are preserved;
+    /// everything the user typed is escaped, so `$(…)`, backticks and `\` stay literal.
+    static func shellQuotePath(_ path: String) -> String {
+        var home = ""
+        var rest = Substring(path)
+        if path.hasPrefix("~/") {
+            home = "$HOME/"
+            rest = path.dropFirst(2)
+        } else if path == "~" {
+            home = "$HOME"
+            rest = ""
         }
-        // Double-quote: preserves $HOME expansion, protects spaces and globs
-        let escaped = expanded.replacingOccurrences(of: "\"", with: "\\\"")
-        return "\"\(escaped)\""
+        var escaped = ""
+        for character in rest {
+            if "\\\"$`".contains(character) { escaped.append("\\") }
+            escaped.append(character)
+        }
+        return "\"\(home)\(escaped)\""
     }
 
-    static func findSkills(_ server: RemoteServer) async throws -> [(path: String, content: String)] {
+    /// The result of listing a server's skills. `listedPaths` holds every `SKILL.md` that
+    /// `find` reported, including any that could not be read, so a sync only drops rows for
+    /// skills that are really gone rather than ones that were briefly unreadable.
+    struct RemoteListing {
+        let skills: [(path: String, content: String)]
+        let listedPaths: Set<String>
+    }
+
+    static func findSkills(_ server: RemoteServer) async throws -> RemoteListing {
         let basePath = shellQuotePath(server.skillsBasePath)
 
         // Find all SKILL.md files under the base path
@@ -85,21 +102,22 @@ enum SSHService {
             args: baseArgs(for: server) + [findCmd]
         )
 
-        if code != 0 {
+        // 255 is ssh's own failure. `find` exits 1 when any subdirectory is unreadable,
+        // which still leaves the rest of the listing usable.
+        if code == 255 {
             throw SSHError.connectionFailed(stderr.isEmpty ? "Connection failed (exit code \(code))" : stderr)
         }
 
         let paths = stdout.split(separator: "\n").map(String.init).filter { !$0.isEmpty }
-        if paths.isEmpty { return [] }
-
-        // Read all files in a single SSH call
-        // Escape the delimiter argument too: a path containing a quote would
-        // otherwise break out of the echo and turn the whole chain into a
-        // syntax error, which reads back as "this server has no skills".
-        let catCmds = paths.map {
-            "echo \(shellEscape(delimiterPrefix + $0 + delimiterSuffix)) && cat \(shellEscape($0))"
+        if code != 0 && paths.isEmpty {
+            // Most likely a missing or unreadable base path. Report it instead of returning
+            // an empty listing, which would remove every synced skill from the library.
+            throw SSHError.commandFailed("Could not list \(server.skillsBasePath) on the server (exit code \(code)).")
         }
-        let combined = catCmds.joined(separator: " && ")
+        if paths.isEmpty { return RemoteListing(skills: [], listedPaths: []) }
+
+        // Read all files in a single SSH call.
+        let combined = readCommand(for: paths)
         let (content, errorOutput, exitCode) = try await run(
             args: baseArgs(for: server) + [combined]
         )
@@ -109,7 +127,24 @@ enum SSHService {
             )
         }
 
-        return parseDelimitedOutput(content).map { (path: repairLegacyRemotePath($0.path), content: $0.content) }
+        let skills = parseDelimitedOutput(content).map { (path: repairLegacyRemotePath($0.path), content: $0.content) }
+        return RemoteListing(skills: skills, listedPaths: Set(paths))
+    }
+
+    /// Builds the single remote command that prints every readable file behind its own
+    /// delimiter line. Commands are joined with `;` so one unreadable file doesn't stop the
+    /// rest, and each delimiter is preceded by a newline so a file without a trailing
+    /// newline can't glue itself onto the next delimiter. `parseDelimitedOutput` reverses
+    /// this exactly: that extra newline is what terminates the previous file's last line.
+    /// The delimiter argument is escaped too: a path containing a quote would otherwise
+    /// break out of it and turn the whole chain into a syntax error.
+    static func readCommand(for paths: [String]) -> String {
+        paths.map { path in
+            let file = shellEscape(path)
+            let delimiter = shellEscape(delimiterPrefix + path + delimiterSuffix)
+            return "if [ -r \(file) ]; then printf '\\n%s\\n' \(delimiter); cat \(file); fi"
+        }
+        .joined(separator: "; ")
     }
 
     // MARK: - Path helpers
@@ -177,16 +212,25 @@ enum SSHService {
                 process.standardOutput = stdoutPipe
                 process.standardError = stderrPipe
 
-                if let stdinContent {
-                    let stdinPipe = Pipe()
-                    process.standardInput = stdinPipe
-                    let data = stdinContent.data(using: .utf8) ?? Data()
-                    stdinPipe.fileHandleForWriting.write(data)
-                    stdinPipe.fileHandleForWriting.closeFile()
-                }
+                let stdinPipe = stdinContent.map { _ in Pipe() }
+                process.standardInput = stdinPipe ?? FileHandle.nullDevice
 
                 do {
                     try process.run()
+
+                    // Feed stdin only once the child is running, and from another thread:
+                    // content larger than the pipe buffer would otherwise block forever
+                    // with nobody reading the other end.
+                    if let stdinPipe, let stdinContent {
+                        let data = Data(stdinContent.utf8)
+                        // If ssh exits early (auth failure) the write hits a closed pipe;
+                        // report EPIPE instead of letting SIGPIPE terminate the app.
+                        _ = fcntl(stdinPipe.fileHandleForWriting.fileDescriptor, F_SETNOSIGPIPE, 1)
+                        DispatchQueue.global(qos: .userInitiated).async {
+                            try? stdinPipe.fileHandleForWriting.write(contentsOf: data)
+                            try? stdinPipe.fileHandleForWriting.close()
+                        }
+                    }
 
                     // Drain both pipes concurrently with the process running, not
                     // after `waitUntilExit()`. `findSkills` cats every remote

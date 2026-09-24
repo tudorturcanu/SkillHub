@@ -202,3 +202,27 @@ final class SkillLinterTests: XCTestCase {
         )
     }
 }
+
+// MARK: - CRLF files
+
+extension SkillLinterTests {
+
+    /// A CRLF file used to parse as having no frontmatter, so "Add frontmatter" stacked a
+    /// second block on top of the existing one.
+    func testCRLFFrontmatterIsRecognised() {
+        let content = "---\r\nname: crlf\r\ndescription: d\r\n---\r\nBody\r\n"
+        let report = SkillLinter.lint(content, skill: makeSkill())
+        XCTAssertFalse(report.fixes.contains { $0.id == "add-frontmatter" })
+        XCTAssertTrue(SkillLinter.startsWithFrontmatterDelimiter(content))
+        XCTAssertFalse(SkillLinter.hasUnterminatedFrontmatter(content))
+    }
+
+    func testAddNameKeepsCRLFLineEndings() throws {
+        let content = "---\r\ndescription: d\r\n---\r\nBody\r\n"
+        let fix = try XCTUnwrap(SkillLinter.lint(content, skill: makeSkill()).fixes.first { $0.id == "add-name" })
+        let updated = fix.apply(content, makeSkill())
+        XCTAssertTrue(updated.contains("\r\nname: "))
+        XCTAssertFalse(updated.replacingOccurrences(of: "\r\n", with: "").contains("\n"), "every line should stay CRLF")
+        XCTAssertFalse(FrontmatterParser.parse(updated).name.isEmpty)
+    }
+}

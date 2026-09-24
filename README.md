@@ -14,16 +14,18 @@ Instead of letting your agent instructions stay scattered across Claude Code, Co
 ## 🌟 Key Features
 
 - **Unified Developer Dashboard**: View aggregated metrics (total skills, active rules, agents, and connected remote servers) alongside a real-time activity stream.
-- **Native SwiftUI Editor & Live Preview**: High-performance syntax-highlighted Markdown editor with autosave indicators and a live side-by-side HTML/Markdown preview parsing frontmatter metadata.
+- **Native SwiftUI Editor & Live Preview**: High-performance syntax-highlighted Markdown editor with autosave indicators and a live side-by-side HTML/Markdown preview parsing frontmatter metadata. Links in the preview and in agent replies only open in a browser or mail client — never another app — since skills can come from the community registry.
+- **Document Outline**: The toolbar's outline menu lists every heading in the open skill (skipping frontmatter and fenced code) and jumps the editor straight to it, so long rule files are easy to move around in.
+- **Quick Actions**: Right-click any item to favorite it, copy its name, content or path, reveal it in Finder, open it in your default Markdown editor (⌥⌘O), or open its folder in Terminal. ⌥⇧⌘C copies the selected item's path.
 - **Safe Editing**: Autosave flushes when you switch items or quit, so an edit is never lost to a stray click. If an agent rewrites a file you have open, SkillKit says so and offers Reload or Keep Mine rather than overwriting either side. Deletes move to the Trash.
 - **Safe Renaming**: Rename skills and rules in place while keeping frontmatter, headings, and linked agent installations synchronized.
-- **Static Security Scanner**: Clean-room offline static analysis engine that checks skill instructions for prompt injections, hardcoded API keys (OpenAI, Anthropic, GitHub, AWS), SSH private key leakage, zero-width unicode tricks, and destructive shell execution. Findings carry a file and line you can jump to, and any rule can be ignored per skill.
+- **Static Security Scanner**: Clean-room offline static analysis engine that checks skill instructions for prompt injections, hardcoded API keys (OpenAI, Anthropic, GitHub, AWS), SSH private key leakage, zero-width unicode tricks, and destructive shell execution. Hidden instructions are caught even when an HTML comment spans several lines, and line numbers stay correct in Windows (CRLF) files. Findings carry a file and line you can jump to, and any rule can be ignored per skill.
 - **Automated Skill Linter**: Automated rule checker and quick-fix provider for missing metadata, frontmatter names/descriptions, trailing whitespace, and unicode formatting. Every fix is previewed as a diff before it is written, and Markdown hard breaks and fenced code are left alone.
 - **Multi-Platform Probing**: Automatically detects and scans project-local config folders, global config directories, and CLI/Desktop plugins. Rescans are incremental, so editing a skill does not re-walk the whole library.
 - **Interactive Agent Chat**: Refine or refactor your instructions by chatting directly with your active local agent (e.g., Claude Code, Codex) from within the app. Replies stream as they arrive, follow-up messages keep the conversation's context, and transcripts survive closing the panel.
 - **Finds Your CLI Anywhere**: Agent binaries are resolved through your login shell, so installs managed by fnm, mise, volta, bun or pnpm are picked up. You can also point SkillKit at a binary yourself in Settings → Agents.
 - **Visual Diff Review**: Inspect, accept, or reject edits suggested by the agent through a native side-by-side diff review panel.
-- **SSH Remote VM Syncing**: Sync and manage skill libraries on remote cloud VMs or servers over secure SSH connections.
+- **SSH Remote VM Syncing**: Sync and manage skill libraries on remote cloud VMs or servers over secure SSH connections. A file that can't be read, or a folder `find` can't enter, is skipped rather than failing the sync, and a skill is only removed from the library once it is actually gone from the server.
 - **Community Skill Registry**: Browse, discover, and download curated open-source agent skills directly into your local library.
 
 ---
@@ -106,6 +108,14 @@ xcodebuild -scheme SkillKit -configuration Debug build
 
 ```bash
 open SkillKit.xcodeproj
+```
+
+### 4. Run the tests
+
+The library and its tests also build as a Swift package, so no project generation is needed:
+
+```bash
+swift test
 ```
 
 ---

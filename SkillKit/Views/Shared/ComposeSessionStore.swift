@@ -153,17 +153,35 @@ final class ComposeSessionStore {
         }
     }
 
+    /// Writes run one at a time, in the order they were queued, so a slow older snapshot
+    /// can never land on disk after a newer one.
+    private static let writeQueue = DispatchQueue(label: "alice.turcanu.com.SkillKit.ComposeSessionStore", qos: .utility)
+
     /// Debounced write. Called from `ComposeSession.messages.didSet`.
     func scheduleSave() {
         saveTask?.cancel()
         saveTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(1))
             guard !Task.isCancelled, let self else { return }
+            self.saveTask = nil
             self.saveNow()
         }
     }
 
-    private func saveNow() {
+    /// Writes a pending debounced save immediately and waits for it to reach disk. Called
+    /// on quit, so a reply that arrived in the last second before ⌘Q is not lost.
+    func flush() {
+        guard let pending = saveTask else {
+            // A save may already be queued; let it reach disk before the process exits.
+            Self.writeQueue.sync {}
+            return
+        }
+        pending.cancel()
+        saveTask = nil
+        saveNow(waitUntilWritten: true)
+    }
+
+    private func saveNow(waitUntilWritten: Bool = false) {
         // `Dictionary.Values` has no defined order, so the cap has to be applied to a
         // deliberate ordering — most recently touched first — or relaunching would drop
         // an arbitrary transcript, quite possibly the one being used right now.
@@ -179,7 +197,7 @@ final class ComposeSessionStore {
                 )
             }
         let url = Self.storeURL
-        Task.detached(priority: .utility) {
+        let write = {
             do {
                 let encoder = JSONEncoder()
                 encoder.outputFormatting = [.sortedKeys]
@@ -188,6 +206,11 @@ final class ComposeSessionStore {
             } catch {
                 AppLogger.fileIO.error("Compose transcript save failed: \(error.localizedDescription)")
             }
+        }
+        if waitUntilWritten {
+            Self.writeQueue.sync(execute: write)
+        } else {
+            Self.writeQueue.async(execute: write)
         }
     }
 }
