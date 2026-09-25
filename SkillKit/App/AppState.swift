@@ -7,6 +7,7 @@ final class AppState {
     var searchText: String = ""
     var showingNewSkillSheet: Bool = false
     var showingDuplicateSkillSheet: Bool = false
+    var showingReplaceInLibrary: Bool = false
     var skillToDuplicate: Skill? = nil
     var skillToRename: Skill? = nil
     var newItemKind: ItemKind = .skill

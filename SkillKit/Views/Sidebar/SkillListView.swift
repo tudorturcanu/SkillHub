@@ -32,6 +32,7 @@ struct SkillListView: View {
     @AppStorage("securityScanningEnabled") private var securityScanningEnabled = true
     @State private var activeAlert: ActiveAlert?
     @State private var selectedSkillPaths: Set<String> = []
+    @State private var comparison: SkillComparison?
     /// The row the user clicked most recently. With several rows selected, the
     /// detail shows this one rather than an arbitrary member of the set.
     @State private var lastClickedPath: String?
@@ -405,8 +406,110 @@ struct SkillListView: View {
         )
     }
 
+
+    /// Actions that apply to every selected row. Shown in the toolbar's Bulk
+    /// Actions menu, and in the context menu of a row that's part of the selection.
+    @ViewBuilder
+    private func bulkActions() -> some View {
+        if selectedSkills.count == 2 {
+            Button {
+                compareSelected()
+            } label: {
+                Label("Compare", systemImage: "arrow.left.arrow.right")
+            }
+            Divider()
+        }
+        Button {
+            setFavoriteForSelection(true)
+        } label: {
+            Label("Favorite Selected", systemImage: "star.fill")
+        }
+
+        Button {
+            setFavoriteForSelection(false)
+        } label: {
+            Label("Unfavorite Selected", systemImage: "star")
+        }
+
+        Divider()
+        Button {
+            copySelectedPaths()
+        } label: {
+            Label("Copy Selected Paths", systemImage: "doc.on.doc")
+        }
+
+        Button {
+            exportSelectedSkills()
+        } label: {
+            Label("Export Selected", systemImage: "square.and.arrow.up")
+        }
+
+        if securityScanningEnabled {
+            Button {
+                copySelectedSecurityReport()
+            } label: {
+                Label("Copy Selected Security Report", systemImage: "doc.on.clipboard")
+            }
+        }
+
+        if !allCollections.isEmpty {
+            Divider()
+            Menu("Collections") {
+                ForEach(allCollections) { collection in
+                    Button {
+                        setCollection(collection, isAssigned: true)
+                    } label: {
+                        Label(collection.name, systemImage: collection.icon)
+                    }
+
+                    Button {
+                        setCollection(collection, isAssigned: false)
+                    } label: {
+                        Label("Remove from \(collection.name)", systemImage: "minus.circle")
+                    }
+                }
+            }
+        }
+
+        if selectedSkills.contains(where: { !$0.isRemote }) {
+            Divider()
+            Button {
+                revealSelectedInFinder()
+            } label: {
+                Label("Reveal Selected in Finder", systemImage: "folder")
+            }
+        }
+
+        if !selectedGlobalizableSkills.isEmpty {
+            Button {
+                makeSelectedSkillsGlobal()
+            } label: {
+                Label("Make Selected Global", systemImage: "globe")
+            }
+        }
+
+        if !selectedLocalEditableSkills.isEmpty {
+            Divider()
+            Button(role: .destructive) {
+                activeAlert = .confirmDeleteSelected(selectedLocalEditableSkills.count)
+            } label: {
+                Label("Move Selected to Trash", systemImage: "trash")
+            }
+        }
+    }
+
     @ViewBuilder
     private func contextMenu(for skill: Skill) -> some View {
+        if selectedSkills.count > 1 && selectedSkillPaths.contains(skill.resolvedPath) {
+            Text("\(selectedSkills.count) Items Selected")
+            bulkActions()
+        } else {
+            singleContextMenu(for: skill)
+        }
+    }
+
+    @ViewBuilder
+    private func singleContextMenu(for skill: Skill) -> some View {
         Button(skill.isFavorite ? "Unfavorite" : "Favorite") {
             skill.isFavorite.toggle()
             try? modelContext.save()
@@ -415,8 +518,13 @@ struct SkillListView: View {
             Button("Name") {
                 copyToPasteboard(skill.name)
             }
-            Button("Content") {
+            Button("Body") {
                 copyToPasteboard(skill.content)
+            }
+            if !skill.isRemote {
+                Button("Full File") {
+                    copyToPasteboard(SkillEditorDocument.readLocalFile(at: skill.filePath) ?? skill.content)
+                }
             }
             Button("File Path") {
                 copyToPasteboard(skill.filePath)
@@ -564,6 +672,18 @@ struct SkillListView: View {
         NSWorkspace.shared.activateFileViewerSelecting(urls)
     }
 
+    private func compareSelected() {
+        let pair = selectedSkills.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        guard pair.count == 2 else { return }
+        func text(_ skill: Skill) -> String {
+            skill.isRemote ? skill.content : (SkillEditorDocument.readLocalFile(at: skill.filePath) ?? skill.content)
+        }
+        comparison = SkillComparison(
+            leftName: pair[0].name, left: text(pair[0]),
+            rightName: pair[1].name, right: text(pair[1])
+        )
+    }
+
     private func copyToPasteboard(_ value: String) {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(value, forType: .string)
@@ -702,83 +822,7 @@ struct SkillListView: View {
 
                     if selectedSkills.count > 1 {
                         Menu {
-                            Button {
-                                setFavoriteForSelection(true)
-                            } label: {
-                                Label("Favorite Selected", systemImage: "star.fill")
-                            }
-
-                            Button {
-                                setFavoriteForSelection(false)
-                            } label: {
-                                Label("Unfavorite Selected", systemImage: "star")
-                            }
-
-                            Divider()
-                            Button {
-                                copySelectedPaths()
-                            } label: {
-                                Label("Copy Selected Paths", systemImage: "doc.on.doc")
-                            }
-
-                            Button {
-                                exportSelectedSkills()
-                            } label: {
-                                Label("Export Selected", systemImage: "square.and.arrow.up")
-                            }
-
-                            if securityScanningEnabled {
-                                Button {
-                                    copySelectedSecurityReport()
-                                } label: {
-                                    Label("Copy Selected Security Report", systemImage: "doc.on.clipboard")
-                                }
-                            }
-
-                            if !allCollections.isEmpty {
-                                Divider()
-                                Menu("Collections") {
-                                    ForEach(allCollections) { collection in
-                                        Button {
-                                            setCollection(collection, isAssigned: true)
-                                        } label: {
-                                            Label(collection.name, systemImage: collection.icon)
-                                        }
-
-                                        Button {
-                                            setCollection(collection, isAssigned: false)
-                                        } label: {
-                                            Label("Remove from \(collection.name)", systemImage: "minus.circle")
-                                        }
-                                    }
-                                }
-                            }
-
-                            if selectedSkills.contains(where: { !$0.isRemote }) {
-                                Divider()
-                                Button {
-                                    revealSelectedInFinder()
-                                } label: {
-                                    Label("Reveal Selected in Finder", systemImage: "folder")
-                                }
-                            }
-
-                            if !selectedGlobalizableSkills.isEmpty {
-                                Button {
-                                    makeSelectedSkillsGlobal()
-                                } label: {
-                                    Label("Make Selected Global", systemImage: "globe")
-                                }
-                            }
-
-                            if !selectedLocalEditableSkills.isEmpty {
-                                Divider()
-                                Button(role: .destructive) {
-                                    activeAlert = .confirmDeleteSelected(selectedLocalEditableSkills.count)
-                                } label: {
-                                    Label("Move Selected to Trash", systemImage: "trash")
-                                }
-                            }
+                            bulkActions()
                         } label: {
                             Image(systemName: "checklist")
                         }
@@ -787,6 +831,30 @@ struct SkillListView: View {
                     }
                 }
             }
+        }
+        .sheet(item: $comparison) { comparison in
+            VStack(spacing: 0) {
+                HStack {
+                    Label(comparison.leftName, systemImage: "minus.circle").foregroundStyle(.red)
+                    Image(systemName: "arrow.right").foregroundStyle(.secondary)
+                    Label(comparison.rightName, systemImage: "plus.circle").foregroundStyle(.green)
+                    Spacer()
+                    Button("Done") { self.comparison = nil }
+                        .keyboardShortcut(.cancelAction)
+                }
+                .font(.callout)
+                .lineLimit(1)
+                .padding(10)
+                Divider()
+                DiffReviewPanel(
+                    original: comparison.left,
+                    proposed: comparison.right,
+                    onAccept: nil,
+                    onReject: nil,
+                    title: "Compare"
+                )
+            }
+            .frame(minWidth: 640, idealWidth: 820, minHeight: 440, idealHeight: 620)
         }
         .alert(item: $activeAlert) { alert in
             switch alert {
@@ -1181,4 +1249,13 @@ struct SkillRow: View {
         }
         .padding(.vertical, 4)
     }
+}
+
+/// Two items' text, shown side by side by the list's Compare action.
+private struct SkillComparison: Identifiable {
+    let id = UUID()
+    let leftName: String
+    let left: String
+    let rightName: String
+    let right: String
 }

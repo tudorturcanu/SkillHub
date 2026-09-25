@@ -102,6 +102,7 @@ struct DiffReviewPanel: View {
     let onAccept: (() -> Void)?
     let onReject: (() -> Void)?
     var isApplying = false
+    var title = "Review Changes"
 
     @State private var lines: [DiffLine] = []
 
@@ -139,7 +140,7 @@ struct DiffReviewPanel: View {
 
             Spacer()
 
-            Text("Review Changes")
+            Text(title)
                 .font(.caption)
                 .foregroundStyle(.secondary)
 

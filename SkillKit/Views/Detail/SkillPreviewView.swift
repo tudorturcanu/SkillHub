@@ -33,6 +33,7 @@ private struct MarkdownWebView: NSViewRepresentable {
         config.defaultWebpagePreferences.allowsContentJavaScript = false
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.navigationDelegate = context.coordinator
+        context.coordinator.webView = webView
         webView.underPageBackgroundColor = Self.dynamicBgColor
         loadHTML(in: webView, context: context)
         return webView
@@ -86,6 +87,26 @@ private struct MarkdownWebView: NSViewRepresentable {
 
     final class Coordinator: NSObject, WKNavigationDelegate {
         var lastContentHash: Int?
+        weak var webView: WKWebView?
+        private var headingObserver: NSObjectProtocol?
+
+        override init() {
+            super.init()
+            headingObserver = NotificationCenter.default.addObserver(
+                forName: .scrollPreviewToHeading, object: nil, queue: .main
+            ) { [weak self] notification in
+                guard let index = notification.userInfo?["index"] as? Int else { return }
+                MainActor.assumeIsolated {
+                    self?.webView?.evaluateJavaScript(
+                        "document.querySelectorAll('h1,h2,h3,h4,h5,h6')[\(index)]?.scrollIntoView({behavior:'smooth',block:'start'})"
+                    )
+                }
+            }
+        }
+
+        deinit {
+            if let headingObserver { NotificationCenter.default.removeObserver(headingObserver) }
+        }
 
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
             if navigationAction.navigationType == .linkActivated,

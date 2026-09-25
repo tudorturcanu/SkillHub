@@ -125,6 +125,9 @@ struct ContentView: View {
         .sheet(isPresented: $appState.showingDuplicateSkillSheet) {
             DuplicateSkillSheet()
         }
+        .sheet(isPresented: $appState.showingReplaceInLibrary) {
+            ReplaceInLibrarySheet()
+        }
         .sheet(item: $appState.skillToRename) { skill in
             RenameSkillSheet(skill: skill)
         }

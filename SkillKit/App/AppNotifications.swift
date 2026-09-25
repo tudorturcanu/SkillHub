@@ -27,6 +27,8 @@ extension Notification.Name {
     /// Ask the mounted editor to scroll to and select a 1-based line.
     /// `userInfo["line"]` is an `Int` over the full file text.
     static let scrollEditorToLine = Notification.Name("scrollEditorToLine")
+    /// Scrolls the Markdown preview to its Nth heading (`userInfo["index"]`, 0-based).
+    static let scrollPreviewToHeading = Notification.Name("scrollPreviewToHeading")
     /// Posted just before the app terminates so the editor can flush a
     /// pending autosave synchronously.
     static let applicationWillTerminate = Notification.Name("skillKitApplicationWillTerminate")

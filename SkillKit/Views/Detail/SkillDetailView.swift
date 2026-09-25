@@ -275,13 +275,21 @@ struct SkillDetailView: View {
                     if outline.isEmpty {
                         Text("No headings")
                     } else {
-                        ForEach(outline) { heading in
+                        ForEach(Array(outline.enumerated()), id: \.element.id) { index, heading in
                             Button {
-                                NotificationCenter.default.post(
-                                    name: .jumpToEditorLine,
-                                    object: nil,
-                                    userInfo: ["line": heading.line]
-                                )
+                                if viewMode == .preview {
+                                    NotificationCenter.default.post(
+                                        name: .scrollPreviewToHeading,
+                                        object: nil,
+                                        userInfo: ["index": index]
+                                    )
+                                } else {
+                                    NotificationCenter.default.post(
+                                        name: .jumpToEditorLine,
+                                        object: nil,
+                                        userInfo: ["line": heading.line]
+                                    )
+                                }
                             } label: {
                                 Text(String(repeating: "    ", count: heading.level - outline.minLevel) + heading.title)
                             }

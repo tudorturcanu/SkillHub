@@ -89,13 +89,13 @@ final class SkillEditorDocument {
     // MARK: - Local
 
     /// The bookmarked root that grants sandbox access to `path`.
-    nonisolated private static func accessRoot(for path: String) -> String {
+    nonisolated static func accessRoot(for path: String) -> String {
         let customPaths = UserDefaults.standard.stringArray(forKey: "customScanPaths") ?? []
         let sotDir = SkillKitSettings.sotDir
         return ([sotDir] + customPaths).first(where: { path.hasPrefix($0) }) ?? path
     }
 
-    nonisolated private static func readLocalFile(at path: String) -> String? {
+    nonisolated static func readLocalFile(at path: String) -> String? {
         SandboxBookmarkManager.resolveAndAccess(path: accessRoot(for: path)) { _ in
             try? String(contentsOfFile: path, encoding: .utf8)
         }

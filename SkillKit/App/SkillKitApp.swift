@@ -112,6 +112,11 @@ struct SkillKitApp: App {
                     NotificationCenter.default.post(name: .focusLibrarySearch, object: nil)
                 }
                 .keyboardShortcut("f", modifiers: [.command, .option])
+
+                Button("Replace in Library…") {
+                    appState.showingReplaceInLibrary = true
+                }
+                .keyboardShortcut("r", modifiers: [.command, .option])
             }
             CommandMenu("Format") {
                 Button("Bold") {

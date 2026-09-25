@@ -144,7 +144,52 @@ enum SkillLinter {
             ))
         }
 
+        if !skill.isRemote {
+            let missing = missingRelativeLinks(in: fullContent, relativeTo: skill.filePath)
+            if !missing.isEmpty {
+                let list = missing.prefix(5).map { "`\($0)`" }.joined(separator: ", ")
+                let more = missing.count > 5 ? " and \(missing.count - 5) more" : ""
+                warnings.append(.init(
+                    id: "broken-relative-links",
+                    title: missing.count == 1 ? "Broken link" : "\(missing.count) broken links",
+                    message: "These links point to files that don't exist next to this item: \(list)\(more)."
+                ))
+            }
+        }
+
         return SkillLintReport(fixes: fixes, warnings: warnings)
+    }
+
+    // MARK: - Links
+
+    /// Relative Markdown link and image targets (outside fenced code) whose file
+    /// is missing from the item's folder. URLs, anchors and absolute paths are skipped.
+    static func missingRelativeLinks(in content: String, relativeTo filePath: String) -> [String] {
+        let folder = URL(fileURLWithPath: filePath).deletingLastPathComponent()
+        var targets: [String] = []
+        var inFence = false
+        let pattern = try! NSRegularExpression(pattern: #"!?\[[^\]]*\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"]*")?\s*\)"#)
+        for rawLine in content.components(separatedBy: "\n") {
+            if fenceMarker(in: rawLine) != nil { inFence.toggle(); continue }
+            if inFence { continue }
+            let ns = rawLine as NSString
+            for match in pattern.matches(in: rawLine, range: NSRange(location: 0, length: ns.length)) {
+                let target = ns.substring(with: match.range(at: 1))
+                let lower = target.lowercased()
+                if target.hasPrefix("#") || target.hasPrefix("/") || target.hasPrefix("~")
+                    || lower.range(of: #"^[a-z][a-z0-9+.-]*:"#, options: .regularExpression) != nil {
+                    continue
+                }
+                let path = String(target.split(separator: "#", maxSplits: 1).first ?? "")
+                guard !path.isEmpty else { continue }
+                let decoded = path.removingPercentEncoding ?? path
+                if !targets.contains(decoded) { targets.append(decoded) }
+            }
+        }
+        guard !targets.isEmpty else { return [] }
+        return SandboxBookmarkManager.resolveAndAccessParent(for: filePath) { _ in
+            targets.filter { !FileManager.default.fileExists(atPath: folder.appendingPathComponent($0).standardizedFileURL.path) }
+        }
     }
 
     // MARK: - Frontmatter
