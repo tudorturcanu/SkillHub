@@ -248,10 +248,12 @@ struct ContentView: View {
 
         setupFileWatcher()
 
+        #if !APP_STORE
         // Sync remote servers in the background
         Task {
             await scanner.syncAllRemoteServers()
         }
+        #endif
     }
 
     private func setupFileWatcher() {

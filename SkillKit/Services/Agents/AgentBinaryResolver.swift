@@ -113,6 +113,9 @@ final class AgentBinaryResolver: @unchecked Sendable {
 
     /// Full resolution, spawning the login shell if it hasn't been queried yet.
     func resolve(name: String, agentId: AgentID?, extraPaths: [String] = []) async -> Resolution? {
+        #if APP_STORE
+        return nil
+        #else
         if let agentId, overridePath(for: agentId) != nil {
             return resolveCached(name: name, agentId: agentId, extraPaths: extraPaths)
         }
@@ -126,6 +129,7 @@ final class AgentBinaryResolver: @unchecked Sendable {
             return Resolution(url: url, source: .probe)
         }
         return nil
+        #endif
     }
 
     /// Warms the login-shell cache. Safe to call repeatedly.
@@ -226,6 +230,9 @@ final class AgentBinaryResolver: @unchecked Sendable {
 
     /// Runs the user's login shell and captures `$PATH`. Blocking; call off the main thread.
     private static func queryShellPATHBlocking(interactive: Bool) -> String? {
+        #if APP_STORE
+        return nil
+        #else
         let shell = ProcessInfo.processInfo.environment["SHELL"].flatMap { $0.isEmpty ? nil : $0 } ?? "/bin/zsh"
         guard FileManager.default.isExecutableFile(atPath: shell) else { return nil }
 
@@ -280,6 +287,7 @@ final class AgentBinaryResolver: @unchecked Sendable {
             }
         }
         return nil
+        #endif
     }
 
     // MARK: - Filesystem helpers

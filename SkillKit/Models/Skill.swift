@@ -224,6 +224,10 @@ extension Skill {
 
         try fm.createDirectory(atPath: agentsSkillsDir, withIntermediateDirectories: true)
 
+        if let source = try SkillSourceStore.load(for: filePath) {
+            try SkillSourceStore.save(source, for: canonicalFile)
+        }
+
         // Move original directory to canonical location
         let originalDir = currentSkillDir.path
         try fm.moveItem(atPath: originalDir, toPath: canonicalDir)
@@ -439,6 +443,17 @@ enum SkillRenamer {
 
         let realMoves = locations.filter { !$0.isSymbolicLink && $0.source.path != $0.destination.path }
         let linkMoves = locations.filter { $0.isSymbolicLink && $0.source.path != $0.destination.path }
+        for location in realMoves {
+            let oldFile = skill.isDirectory
+                ? location.source.appendingPathComponent(fileName(for: oldFilePaths, under: location.source))
+                : location.source
+            let newFile = skill.isDirectory
+                ? location.destination.appendingPathComponent(oldFile.lastPathComponent)
+                : location.destination
+            if let source = try SkillSourceStore.load(for: oldFile.path) {
+                try SkillSourceStore.save(source, for: newFile.path)
+            }
+        }
         var movedRealLocations: [Location] = []
         var createdLinkLocations: [Location] = []
 

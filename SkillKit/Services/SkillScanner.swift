@@ -900,6 +900,7 @@ final class SkillScanner {
 
     // MARK: - Remote Server Scanning
 
+    #if !APP_STORE
     @MainActor
     func syncAllRemoteServers() async {
         let descriptor = FetchDescriptor<RemoteServer>()
@@ -1005,6 +1006,7 @@ final class SkillScanner {
             }
         }
     }
+    #endif
 
     /// Drops rows whose files no longer exist.
     ///

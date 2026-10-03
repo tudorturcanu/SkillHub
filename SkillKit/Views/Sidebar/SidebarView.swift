@@ -5,11 +5,13 @@ struct SidebarView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Skill.name) private var allSkills: [Skill]
-    @Query(sort: \RemoteServer.label) private var servers: [RemoteServer]
     @AppStorage("securityScanningEnabled") private var securityScanningEnabled = true
+    #if !APP_STORE
+    @Query(sort: \RemoteServer.label) private var servers: [RemoteServer]
     @State private var syncingServerIDs: Set<String> = []
     @State private var serverErrors: [String: String] = [:]
     @State private var showingErrorForServer: String?
+    #endif
 
     private var activeSources: [ToolSource] {
         ToolSource.allCases.filter { tool in
@@ -80,6 +82,10 @@ struct SidebarView: View {
                     .tag(SidebarFilter.favorites)
             }
 
+            Section("Smart Collections") {
+                SmartCollectionListView(skills: allSkills)
+            }
+
             Section("Collections") {
                 CollectionListView()
             }
@@ -109,6 +115,7 @@ struct SidebarView: View {
                 }
             }
 
+            #if !APP_STORE
             if !servers.isEmpty {
                 Section("Servers") {
                     ForEach(servers) { server in
@@ -164,6 +171,7 @@ struct SidebarView: View {
                     }
                 }
             }
+            #endif
         }
         .listStyle(.sidebar)
         .navigationSplitViewColumnWidth(min: 180, ideal: 210, max: 280)
@@ -175,6 +183,7 @@ struct SidebarView: View {
         }
     }
 
+    #if !APP_STORE
     private func serverErrorPopover(server: RemoteServer, error: String) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Label("Sync Failed", systemImage: "exclamationmark.triangle.fill")
@@ -233,4 +242,5 @@ struct SidebarView: View {
             }
         }
     }
+    #endif
 }

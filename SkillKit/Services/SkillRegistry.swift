@@ -75,67 +75,94 @@ final class SkillRegistry {
     // MARK: - Content Resolution
 
     func fetchContent(skill: RegistrySkill) async throws -> String {
-        for fallbackBranch in ["main", "master"] {
-            if let content = try? await fetchContentAtConventionalPaths(skill: skill, branch: fallbackBranch) {
-                return content
-            }
-        }
-
-        let branch = try await getDefaultBranch(source: skill.source)
-
-        if let content = try await fetchContentAtConventionalPaths(skill: skill, branch: branch) {
-            return content
-        }
-
-        return try await fetchContentViaTreeAPI(skill: skill, branch: branch)
+        try await fetchRevision(skill: skill).content
     }
 
-    private func fetchContentAtConventionalPaths(skill: RegistrySkill, branch: String) async throws -> String? {
-        let pathPatterns = [
+    /// Resolve the branch once, then fetch every file from that immutable commit.
+    func fetchRevision(skill: RegistrySkill) async throws -> SkillSourceRevision {
+        let branch = try await getDefaultBranch(source: skill.source)
+        let revision = try await latestRevision(source: skill.source, branch: branch)
+        let conventionalPaths = [
             "skills/\(skill.skillId)/SKILL.md",
             "skills/.curated/\(skill.skillId)/SKILL.md",
             "skills/.experimental/\(skill.skillId)/SKILL.md",
-            "\(skill.skillId)/SKILL.md",
-            "SKILL.md",
+            "\(skill.skillId)/SKILL.md", "SKILL.md"
         ]
-
-        for path in pathPatterns {
-            let rawURL = URL(string: "https://raw.githubusercontent.com/\(skill.source)/\(branch)/\(path)")!
-            guard let (data, response) = try? await URLSession.shared.data(from: rawURL),
-                  let http = response as? HTTPURLResponse, http.statusCode == 200,
-                  let content = String(data: data, encoding: .utf8) else {
-                continue
+        for path in conventionalPaths {
+            if let content = try await rawContent(source: skill.source, revision: revision, path: path) {
+                if path == "SKILL.md" {
+                    let name = parseFrontmatterName(from: content)
+                    if name != skill.skillId && name != skill.name { continue }
+                }
+                return SkillSourceRevision(source: skill.source, branch: branch, path: path, revision: revision, content: content)
             }
-
-            if path == "SKILL.md" {
-                let name = parseFrontmatterName(from: content)
-                if name != skill.skillId && name != skill.name { continue }
-            }
-
-            return content
         }
-
-        return nil
+        let paths = try await getSkillPaths(source: skill.source, branch: revision)
+        for path in paths where !conventionalPaths.contains(path) {
+            try Task.checkCancellation()
+            guard let content = try await rawContent(source: skill.source, revision: revision, path: path) else { continue }
+            let name = parseFrontmatterName(from: content)
+            if name == skill.skillId || name == skill.name {
+                return SkillSourceRevision(source: skill.source, branch: branch, path: path, revision: revision, content: content)
+            }
+        }
+        throw RegistryError.skillNotFound
     }
 
-    private func fetchContentViaTreeAPI(skill: RegistrySkill, branch: String) async throws -> String {
-        let paths = try await getSkillPaths(source: skill.source, branch: branch)
-
-        for path in paths {
-            let rawURL = URL(string: "https://raw.githubusercontent.com/\(skill.source)/\(branch)/\(path)")!
-            guard let (data, response) = try? await URLSession.shared.data(from: rawURL),
-                  let http = response as? HTTPURLResponse, http.statusCode == 200,
-                  let content = String(data: data, encoding: .utf8) else {
-                continue
-            }
-
-            let frontmatterName = parseFrontmatterName(from: content)
-            if frontmatterName == skill.skillId || frontmatterName == skill.name {
-                return content
-            }
+    /// Follow only the recorded path and branch. A renamed or deleted file must not
+    /// silently resolve to an unrelated skill elsewhere in the repository.
+    func fetchUpdate(for installed: SkillSourceRevision) async throws -> SkillSourceRevision {
+        let revision = try await latestRevision(source: installed.source, branch: installed.branch)
+        guard let content = try await rawContent(source: installed.source, revision: revision, path: installed.path) else {
+            throw RegistryError.skillNotFound
         }
+        return SkillSourceRevision(source: installed.source, branch: installed.branch, path: installed.path,
+                                   revision: revision, content: content)
+    }
 
-        throw RegistryError.skillNotFound
+    private func latestRevision(source: String, branch: String) async throws -> String {
+        var components = URLComponents(url: try repositoryURL(source: source).appendingPathComponent("commits"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [URLQueryItem(name: "sha", value: branch), URLQueryItem(name: "per_page", value: "1")]
+        let data = try await fetchData(at: components.url!)
+        struct Commit: Decodable { let sha: String }
+        guard let sha = try JSONDecoder().decode([Commit].self, from: data).first?.sha,
+              sha.count == 40, sha.allSatisfy({ $0.isHexDigit }) else { throw RegistryError.treeFetchFailed }
+        return sha
+    }
+
+    private func repositoryURL(source: String) throws -> URL {
+        let parts = source.split(separator: "/", omittingEmptySubsequences: false)
+        let allowed = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_.")
+        guard parts.count == 2, parts.allSatisfy({ !$0.isEmpty && $0 != "." && $0 != ".." && $0.unicodeScalars.allSatisfy(allowed.contains) }) else {
+            throw RegistryError.treeFetchFailed
+        }
+        return URL(string: "https://api.github.com/repos")!.appendingPathComponent(source)
+    }
+
+    private func fetchData(at url: URL) async throws -> Data {
+        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 30)
+        request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse else { throw RegistryError.treeFetchFailed }
+        if http.statusCode == 403 || http.statusCode == 429 { throw RegistryError.rateLimited }
+        guard http.statusCode == 200 else { throw RegistryError.treeFetchFailed }
+        return data
+    }
+
+    private func rawContent(source: String, revision: String, path: String) async throws -> String? {
+        _ = try repositoryURL(source: source)
+        var url = URL(string: "https://raw.githubusercontent.com")!
+        for part in (source + "/" + revision + "/" + path).split(separator: "/") {
+            guard part != ".", part != ".." else { throw RegistryError.skillNotFound }
+            url.appendPathComponent(String(part))
+        }
+        let request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 30)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse else { throw RegistryError.treeFetchFailed }
+        if http.statusCode == 404 { return nil }
+        if http.statusCode == 403 || http.statusCode == 429 { throw RegistryError.rateLimited }
+        guard http.statusCode == 200, let content = String(data: data, encoding: .utf8) else { throw RegistryError.treeFetchFailed }
+        return content
     }
 
     private func getDefaultBranch(source: String) async throws -> String {
@@ -143,17 +170,8 @@ final class SkillRegistry {
             return cached
         }
 
-        let url = URL(string: "https://api.github.com/repos/\(source)")!
-        let (data, response) = try await URLSession.shared.data(from: url)
-        guard let http = response as? HTTPURLResponse else {
-            throw RegistryError.treeFetchFailed
-        }
-        if http.statusCode == 403 {
-            throw RegistryError.rateLimited
-        }
-        guard http.statusCode == 200 else {
-            throw RegistryError.treeFetchFailed
-        }
+        let url = try repositoryURL(source: source)
+        let data = try await fetchData(at: url)
 
         struct RepoResponse: Codable {
             let default_branch: String
@@ -170,17 +188,10 @@ final class SkillRegistry {
             return cached
         }
 
-        let url = URL(string: "https://api.github.com/repos/\(source)/git/trees/\(branch)?recursive=1")!
-        let (data, response) = try await URLSession.shared.data(from: url)
-        guard let http = response as? HTTPURLResponse else {
-            throw RegistryError.treeFetchFailed
-        }
-        if http.statusCode == 403 {
-            throw RegistryError.rateLimited
-        }
-        guard http.statusCode == 200 else {
-            throw RegistryError.treeFetchFailed
-        }
+        var components = URLComponents(url: try repositoryURL(source: source)
+            .appendingPathComponent("git/trees").appendingPathComponent(branch), resolvingAgainstBaseURL: false)!
+        components.queryItems = [URLQueryItem(name: "recursive", value: "1")]
+        let data = try await fetchData(at: components.url!)
 
         struct TreeResponse: Codable {
             struct TreeEntry: Codable {
@@ -246,7 +257,8 @@ final class SkillRegistry {
         return (try? fm.destinationOfSymbolicLink(atPath: path)) != nil
     }
 
-    func install(content: String, skillName: String, agents: [AgentTarget]) throws {
+    func install(content: String, skillName: String, agents: [AgentTarget], source: SkillSourceRevision? = nil) throws {
+        guard !agents.isEmpty else { throw RegistryError.noInstallTargets }
         guard let sanitized = Self.sanitizedInstallName(skillName) else {
             throw RegistryError.invalidSkillName
         }
@@ -281,6 +293,17 @@ final class SkillRegistry {
                 try fm.createDirectory(atPath: canonicalDir, withIntermediateDirectories: true)
                 try content.write(toFile: canonicalFile, atomically: true, encoding: .utf8)
                 AppLogger.fileIO.notice("Wrote canonical skill file to: \(canonicalFile)")
+            }
+        }
+
+        // Only establish a merge base for exact upstream bytes. Existing local edits
+        // without provenance cannot safely be treated as an upstream revision.
+        if let source, source.content == content {
+            try SandboxBookmarkManager.resolveAndAccess(path: canonicalBaseDir) { _ in
+                let installed = try String(contentsOfFile: canonicalFile, encoding: .utf8)
+                if installed == content, try !canonicalAlreadyExisted || SkillSourceStore.load(for: canonicalFile) == nil {
+                    try SkillSourceStore.save(source, for: canonicalFile)
+                }
             }
         }
 
@@ -332,6 +355,7 @@ final class SkillRegistry {
     // MARK: - Errors
 
     enum RegistryError: LocalizedError {
+        case noInstallTargets
         case searchFailed
         case treeFetchFailed
         case rateLimited
@@ -342,6 +366,7 @@ final class SkillRegistry {
 
         var errorDescription: String? {
             switch self {
+            case .noInstallTargets: "Select at least one installation target"
             case .searchFailed: "Search request failed"
             case .treeFetchFailed: "Could not fetch repository contents"
             case .rateLimited: "GitHub API rate limit reached — try again in a few minutes"

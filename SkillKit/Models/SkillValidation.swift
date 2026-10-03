@@ -71,12 +71,53 @@ extension Skill {
             ))
         }
 
+        if itemKind == .skill && !isReadOnly {
+            issues.append(contentsOf: agentSkillSpecIssues)
+        }
+
         if isReadOnly {
             issues.append(.init(
                 id: "read-only",
                 severity: .info,
                 title: "Read-only",
                 message: "This item comes from a plugin or bundled source and cannot be edited here."
+            ))
+        }
+
+        return issues
+    }
+
+    /// Breaks of the shared SKILL.md format rules (see `AgentSkillSpec`).
+    private var agentSkillSpecIssues: [SkillValidationIssue] {
+        var issues: [SkillValidationIssue] = []
+        let frontmatterName = frontmatter["name", default: ""].trimmingCharacters(in: .whitespacesAndNewlines)
+        let problems = AgentSkillSpec.nameProblems(frontmatterName)
+
+        if !problems.isEmpty {
+            issues.append(.init(
+                id: "spec-name-format",
+                severity: .warning,
+                title: "Name breaks the skill format",
+                message: "Agents expect a name like \"\(AgentSkillSpec.normalizedName(frontmatterName))\": \(AgentSkillSpec.describe(problems))."
+            ))
+        } else if !frontmatterName.isEmpty,
+                  let folder = AgentSkillSpec.folderName(forSkillAt: filePath, isDirectory: isDirectory),
+                  folder != frontmatterName {
+            issues.append(.init(
+                id: "spec-name-folder-mismatch",
+                severity: .info,
+                title: "Name doesn't match folder",
+                message: "The name \"\(frontmatterName)\" differs from its folder \"\(folder)\"; agents expect the two to match."
+            ))
+        }
+
+        let descriptionLength = frontmatter["description", default: ""].trimmingCharacters(in: .whitespacesAndNewlines).count
+        if descriptionLength > AgentSkillSpec.maxDescriptionLength {
+            issues.append(.init(
+                id: "spec-description-length",
+                severity: .warning,
+                title: "Description too long",
+                message: "The description is \(descriptionLength) characters; agents allow at most \(AgentSkillSpec.maxDescriptionLength) and may truncate or reject it."
             ))
         }
 

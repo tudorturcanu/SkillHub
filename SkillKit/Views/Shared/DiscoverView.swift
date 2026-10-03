@@ -5,6 +5,7 @@ struct DiscoverView: View {
     @State private var searchText = "git"
     @State private var results: [SkillRegistry.RegistrySkill] = []
     @State private var selectedSkill: SkillRegistry.RegistrySkill?
+    @State private var sourceRevision: SkillSourceRevision?
     @State private var skillContent: String?
     @State private var selectedAgents: Set<String> = []
     @State private var isSearching = false
@@ -520,6 +521,7 @@ struct DiscoverView: View {
     private func selectSkill(_ skill: SkillRegistry.RegistrySkill) {
         contentTask?.cancel()
         selectedSkill = skill
+        sourceRevision = nil
         skillContent = nil
         previewError = nil
         installError = nil
@@ -529,11 +531,12 @@ struct DiscoverView: View {
 
         contentTask = Task {
             do {
-                let content = try await registry.fetchContent(skill: skill)
+                let revision = try await registry.fetchRevision(skill: skill)
                 guard !Task.isCancelled else { return }
                 await MainActor.run {
                     guard selectedSkill?.id == skill.id else { return }
-                    skillContent = content
+                    sourceRevision = revision
+                    skillContent = revision.content
                     isFetchingContent = false
                 }
             } catch {
@@ -576,7 +579,7 @@ struct DiscoverView: View {
         installError = nil
 
         do {
-            try registry.install(content: content, skillName: skillName, agents: agents)
+            try registry.install(content: content, skillName: skillName, agents: agents, source: sourceRevision)
             installSuccess = true
             isInstalling = false
             // The install just created directories, so both the detected-target list and

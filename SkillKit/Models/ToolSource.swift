@@ -325,6 +325,9 @@ enum ToolSource: String, Codable, CaseIterable, Identifiable {
         environment: [String: String],
         timeout: TimeInterval
     ) -> String? {
+        #if APP_STORE
+        return nil
+        #else
         let proc = Process()
         proc.executableURL = url
         proc.arguments = arguments
@@ -359,5 +362,6 @@ enum ToolSource: String, Codable, CaseIterable, Identifiable {
         guard readDone.wait(timeout: .now() + 1) == .success else { return nil }
         guard proc.terminationStatus == 0 else { return nil }
         return String(data: data, encoding: .utf8)
+        #endif
     }
 }

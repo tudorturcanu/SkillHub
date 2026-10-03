@@ -52,6 +52,12 @@ targets:
         ENABLE_HARDENED_RUNTIME: YES
 
       configs:
+        AppStore:
+          DEVELOPMENT_TEAM: 75YTB67VJZ
+          CODE_SIGN_IDENTITY: "Apple Distribution"
+          CODE_SIGN_STYLE: Manual
+          ENABLE_APP_SANDBOX: YES
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) APP_STORE"
         Release:
           CODE_SIGN_IDENTITY: "Developer ID Application"
         LocalRelease:
@@ -68,3 +74,22 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: alice.turcanu.com.SkillKitTests
         MACOSX_DEPLOYMENT_TARGET: "15.0"
+
+schemes:
+  SkillKit:
+    build:
+      targets:
+        SkillKit: all
+        SkillKitTests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - SkillKitTests
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: AppStore

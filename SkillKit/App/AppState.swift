@@ -19,6 +19,10 @@ final class AppState {
     var skillSearchScope: SkillSearchScope = .all
     var recentSearches: [RecentSkillSearch] = RecentSkillSearchStore.load()
 
+    var smartCollections: [SmartCollection] = SmartCollectionStore.load() {
+        didSet { SmartCollectionStore.save(smartCollections) }
+    }
+
     // MARK: - Session restoration
 
     private static let lastFilterKey = "lastSidebarFilter"
@@ -79,6 +83,7 @@ enum SidebarFilter: Hashable {
     case favorites
     case tool(ToolSource)
     case customPlatform(id: String)
+    case smartCollection(UUID)
     case collection(String)
     case server(String)
 }
@@ -97,6 +102,7 @@ extension SidebarFilter {
         case .favorites: "favorites"
         case .tool(let tool): "tool:\(tool.rawValue)"
         case .customPlatform(let id): "customPlatform:\(id)"
+        case .smartCollection(let id): "smartCollection:\(id.uuidString)"
         case .collection(let name): "collection:\(name)"
         case .server(let id): "server:\(id)"
         }
@@ -121,6 +127,9 @@ extension SidebarFilter {
                 guard let tool = ToolSource(rawValue: payload) else { return nil }
                 self = .tool(tool)
             case "customPlatform": self = .customPlatform(id: payload)
+            case "smartCollection":
+                guard let id = UUID(uuidString: payload) else { return nil }
+                self = .smartCollection(id)
             case "collection": self = .collection(payload)
             case "server": self = .server(payload)
             default: return nil
@@ -176,6 +185,7 @@ enum SkillSortOption: String, CaseIterable, Identifiable {
     case platform
     case warningsFirst
     case securityRisk
+    case largest
 
     var id: String { rawValue }
 
@@ -188,6 +198,7 @@ enum SkillSortOption: String, CaseIterable, Identifiable {
         case .platform: "Platform"
         case .warningsFirst: "Needs Review"
         case .securityRisk: "Security Risk"
+        case .largest: "Largest"
         }
     }
 
@@ -200,6 +211,7 @@ enum SkillSortOption: String, CaseIterable, Identifiable {
         case .platform: "square.grid.2x2"
         case .warningsFirst: "exclamationmark.triangle"
         case .securityRisk: "shield.lefthalf.filled"
+        case .largest: "chart.bar.doc.horizontal"
         }
     }
 }

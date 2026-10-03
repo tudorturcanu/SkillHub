@@ -112,6 +112,25 @@ enum SkillLinter {
             }
         }
 
+        if skill.itemKind == .skill, !hasUnterminatedFrontmatter(fullContent) {
+            let name = parsed.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            let folder = AgentSkillSpec.folderName(forSkillAt: skill.filePath, isDirectory: skill.isDirectory)
+            let suggested = AgentSkillSpec.suggestedName(for: name, folderName: folder)
+            let breaksFormat = !AgentSkillSpec.nameProblems(name).isEmpty
+            let mismatchesFolder = folder.map { AgentSkillSpec.isValidName($0) && $0 != name } ?? false
+            if !name.isEmpty, !suggested.isEmpty, suggested != name, breaksFormat || mismatchesFolder {
+                fixes.append(replaceMetadataFix(
+                    id: "fix-skill-name",
+                    title: "Use name \"\(suggested)\"",
+                    message: breaksFormat
+                        ? "Rewrite the name as lowercase letters, digits and hyphens so agents accept it."
+                        : "Match the name to the skill's folder, as agents expect.",
+                    key: "name",
+                    value: suggested
+                ))
+            }
+        }
+
         if containsDeceptiveUnicode(fullContent) {
             fixes.append(.init(
                 id: "remove-deceptive-unicode",
@@ -218,6 +237,28 @@ enum SkillLinter {
                     lines.insert("\(key): \(cleanValue)\(lineEnd)", at: index)
                     return lines.joined(separator: "\n")
                 }
+            }
+            return content
+        }
+    }
+
+    /// Replaces the value of an existing top-level `key:` line in the
+    /// frontmatter. Block scalars (`key: |` / `key: >`) are left alone, since
+    /// their value continues on lines this would not rewrite.
+    private static func replaceMetadataFix(id: String, title: String, message: String, key: String, value: String) -> SkillLintFix {
+        SkillLintFix(id: id, title: title, message: message) { content, _ in
+            var lines = content.components(separatedBy: "\n")
+            guard lines.first?.trimmingCharacters(in: .whitespacesAndNewlines) == "---" else { return content }
+
+            for index in 1..<lines.count {
+                let line = lines[index]
+                if line.trimmingCharacters(in: .whitespacesAndNewlines) == "---" { break }
+                guard line.hasPrefix("\(key):") else { continue }
+                let existing = line.dropFirst(key.count + 1).trimmingCharacters(in: .whitespacesAndNewlines)
+                if existing.hasPrefix("|") || existing.hasPrefix(">") { return content }
+                let lineEnd = line.hasSuffix("\r") ? "\r" : ""
+                lines[index] = "\(key): \(cleanMetadataValue(value))\(lineEnd)"
+                return lines.joined(separator: "\n")
             }
             return content
         }

@@ -20,32 +20,47 @@ final class CLIStreamRunner {
         let wasTerminated: Bool
     }
 
+    #if !APP_STORE
     private let process = Process()
+    #endif
     private var terminated = false
 
     init(executable: URL, arguments: [String], environment: [String: String], currentDirectory: URL?) {
+        #if !APP_STORE
         process.executableURL = executable
         process.arguments = arguments
         process.environment = environment
         process.currentDirectoryURL = currentDirectory
         // Never inherit the app's stdin — CLIs like `codex` otherwise wait on it.
         process.standardInput = FileHandle.nullDevice
+        #endif
     }
 
-    var isRunning: Bool { process.isRunning }
+    var isRunning: Bool {
+        #if APP_STORE
+        false
+        #else
+        process.isRunning
+        #endif
+    }
 
     /// Terminates the child. Safe to call more than once or before/after exit.
     func terminate() {
         terminated = true
+        #if !APP_STORE
         if process.isRunning {
             process.terminate()
         }
+        #endif
     }
 
     /// Launches the process and streams stdout lines to `onLine`. Returns once the
     /// process has exited and both pipes are drained. Throws `AgentError.launchFailed`
     /// if the executable could not be started.
     func run(onLine: @MainActor @escaping (String) -> Void) async throws -> Outcome {
+        #if APP_STORE
+        throw AgentError.launchFailed("Local command-line agents are not available in the App Store edition.")
+        #else
         let stdoutPipe = Pipe()
         let stderrPipe = Pipe()
         process.standardOutput = stdoutPipe
@@ -86,6 +101,7 @@ final class CLIStreamRunner {
             stderr: AgentDataDecoding.text(from: stderrData) ?? "",
             wasTerminated: terminated || Task.isCancelled
         )
+        #endif
     }
 }
 

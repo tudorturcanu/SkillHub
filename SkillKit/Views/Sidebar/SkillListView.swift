@@ -93,6 +93,8 @@ struct SkillListView: View {
             } else {
                 result = []
             }
+        case .smartCollection(let id):
+            result = appState.smartCollections.first { $0.id == id }?.matchingSkills(in: result) ?? []
         case .collection(let collName):
             result = result.filter { skill in
                 skill.collections.contains { $0.name == collName }
@@ -129,7 +131,9 @@ struct SkillListView: View {
         }
 
         if !appliedSearchText.isEmpty {
-            result = result.filter { matchesSearch($0) }
+            let query = SkillSearchQuery(appliedSearchText)
+            let scope = appState.skillSearchScope
+            result = result.filter { $0.matches(query, in: scope) }
         }
 
         return result
@@ -162,6 +166,14 @@ struct SkillListView: View {
                 if lhs.hasValidationWarnings != rhs.hasValidationWarnings {
                     return lhs.hasValidationWarnings
                 }
+                return lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
+            }
+        case .largest:
+            // utf8.count is O(1) for native strings, unlike count.
+            return baseFilteredSkills.sorted { lhs, rhs in
+                let lhsSize = lhs.content.utf8.count
+                let rhsSize = rhs.content.utf8.count
+                if lhsSize != rhsSize { return lhsSize > rhsSize }
                 return lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
             }
         case .securityRisk:
@@ -214,6 +226,8 @@ struct SkillListView: View {
         case .tool(let tool): tool.displayName
         case .customPlatform(let platformID):
             PlatformOption.customPlatforms.first(where: { $0.id == platformID })?.displayName ?? "Custom Platform"
+        case .smartCollection(let id):
+            appState.smartCollections.first { $0.id == id }?.name ?? "Smart Collection"
         case .collection(let name): name
         case .server(let id):
             allSkills.first(where: { $0.remoteServer?.id == id })?.remoteServer?.label ?? "Remote"
@@ -238,28 +252,6 @@ struct SkillListView: View {
         guard case .tool(let tool) = appState.sidebarFilter else { return [] }
         let kinds = Set(allSkills.filter { $0.toolSources.contains(tool) }.map(\.itemKind))
         return ItemKind.allCases.filter { kinds.contains($0) }
-    }
-
-    private func matchesSearch(_ skill: Skill) -> Bool {
-        let searchText = appliedSearchText
-        switch appState.skillSearchScope {
-        case .all:
-            return skill.name.localizedCaseInsensitiveContains(searchText) ||
-                skill.skillDescription.localizedCaseInsensitiveContains(searchText) ||
-                skill.content.localizedCaseInsensitiveContains(searchText) ||
-                skill.filePath.localizedCaseInsensitiveContains(searchText) ||
-                skill.frontmatter.values.contains { $0.localizedCaseInsensitiveContains(searchText) }
-        case .title:
-            return skill.name.localizedCaseInsensitiveContains(searchText)
-        case .description:
-            return skill.skillDescription.localizedCaseInsensitiveContains(searchText)
-        case .content:
-            return skill.content.localizedCaseInsensitiveContains(searchText)
-        case .path:
-            return skill.filePath.localizedCaseInsensitiveContains(searchText)
-        case .metadata:
-            return skill.frontmatter.values.contains { $0.localizedCaseInsensitiveContains(searchText) }
-        }
     }
 
     // MARK: - Selection
@@ -386,6 +378,9 @@ struct SkillListView: View {
             return ("No \(name) Items", "square.grid.2x2",
                     narrowed ? "No \(name) items match the current search or filter."
                              : "No skills are installed for \(name).")
+        case .smartCollection:
+            return ("No Matching Items", "folder.badge.gearshape",
+                    "Items appear automatically when they match this collection’s saved search. Right-click the collection to edit its search.")
         case .collection(let name):
             return ("No Items in \(name)", "folder",
                     narrowed ? "No items in \(name) match the current search or filter."
@@ -399,10 +394,13 @@ struct SkillListView: View {
 
     private var emptyStateView: some View {
         let content = emptyStateContent
+        let tip = appliedSearchText.isEmpty
+            ? ""
+            : "\n\nSearch tips: words match in any order; use \"quotes\" for a phrase, -word to exclude, tool:cursor, or is:rule, is:favorite, is:project."
         return ContentUnavailableView(
             content.title,
             systemImage: content.systemImage,
-            description: Text(content.description)
+            description: Text(content.description + tip)
         )
     }
 
@@ -675,13 +673,7 @@ struct SkillListView: View {
     private func compareSelected() {
         let pair = selectedSkills.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
         guard pair.count == 2 else { return }
-        func text(_ skill: Skill) -> String {
-            skill.isRemote ? skill.content : (SkillEditorDocument.readLocalFile(at: skill.filePath) ?? skill.content)
-        }
-        comparison = SkillComparison(
-            leftName: pair[0].name, left: text(pair[0]),
-            rightName: pair[1].name, right: text(pair[1])
-        )
+        comparison = SkillComparison(pair[0], pair[1])
     }
 
     private func copyToPasteboard(_ value: String) {
@@ -833,28 +825,7 @@ struct SkillListView: View {
             }
         }
         .sheet(item: $comparison) { comparison in
-            VStack(spacing: 0) {
-                HStack {
-                    Label(comparison.leftName, systemImage: "minus.circle").foregroundStyle(.red)
-                    Image(systemName: "arrow.right").foregroundStyle(.secondary)
-                    Label(comparison.rightName, systemImage: "plus.circle").foregroundStyle(.green)
-                    Spacer()
-                    Button("Done") { self.comparison = nil }
-                        .keyboardShortcut(.cancelAction)
-                }
-                .font(.callout)
-                .lineLimit(1)
-                .padding(10)
-                Divider()
-                DiffReviewPanel(
-                    original: comparison.left,
-                    proposed: comparison.right,
-                    onAccept: nil,
-                    onReject: nil,
-                    title: "Compare"
-                )
-            }
-            .frame(minWidth: 640, idealWidth: 820, minHeight: 440, idealHeight: 620)
+            SkillComparisonSheet(comparison: comparison) { self.comparison = nil }
         }
         .alert(item: $activeAlert) { alert in
             switch alert {
@@ -915,7 +886,16 @@ struct SkillListView: View {
             }
             markOpened(selected)
         }
+        .onChange(of: appState.smartCollections) {
+            reconcileHighlightWithVisibleRows()
+        }
         .onChange(of: appState.sidebarFilter) {
+            if case .smartCollection = appState.sidebarFilter {
+                searchDebounceTask?.cancel()
+                appState.searchText = ""
+                appliedSearchText = ""
+                appState.skillQuickFilter = .all
+            }
             updateSelectionForCurrentFilter()
         }
         .onChange(of: selectedSkillPaths) { oldValue, newValue in
@@ -1249,13 +1229,4 @@ struct SkillRow: View {
         }
         .padding(.vertical, 4)
     }
-}
-
-/// Two items' text, shown side by side by the list's Compare action.
-private struct SkillComparison: Identifiable {
-    let id = UUID()
-    let leftName: String
-    let left: String
-    let rightName: String
-    let right: String
 }

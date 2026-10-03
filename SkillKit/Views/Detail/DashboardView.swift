@@ -25,6 +25,7 @@ struct DashboardView: View {
                         if securityScanningEnabled {
                             securityAuditSection
                         }
+                        DuplicateSkillsSection(skills: skills)
                         quickActionsSection
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -34,6 +35,8 @@ struct DashboardView: View {
                         Text("Platform Distribution")
                             .font(.headline)
                         analyticsChartSection
+                        Divider()
+                        ContextBudgetSection(skills: skills)
                     }
                     .frame(width: 280)
                     .padding(20)

@@ -6,7 +6,9 @@ import SwiftData
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         NotificationCenter.default.post(name: .applicationWillTerminate, object: nil)
+        #if !APP_STORE
         ComposeSessionStore.shared.flush()
+        #endif
     }
 }
 

@@ -201,6 +201,9 @@ enum SSHService {
     // MARK: - Private
 
     private static func run(args: [String], stdin stdinContent: String? = nil) async throws -> (stdout: String, stderr: String, exitCode: Int32) {
+        #if APP_STORE
+        throw SSHError.commandFailed("SSH features are not available in the App Store edition.")
+        #else
         try await withCheckedThrowingContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
                 let process = Process()
@@ -266,6 +269,7 @@ enum SSHService {
                 }
             }
         }
+        #endif
     }
 
     /// Splits the combined `echo '---SKILLKIT_DELIM:<path>---' && cat <path>` output produced by

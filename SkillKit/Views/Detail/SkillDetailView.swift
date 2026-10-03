@@ -90,7 +90,9 @@ struct SkillDetailView: View {
     @State private var document = SkillEditorDocument()
     @State private var activeAlert: ActiveAlert?
     @State private var autoSaveTask: Task<Void, Never>?
+    #if !APP_STORE
     @State private var showingComposePanel = false
+    #endif
     @State private var showingLintFixes = false
     /// A lint fix awaiting before/after review. Nothing is written until Apply.
     @State private var pendingLintPreview: LintFixPreview?
@@ -137,12 +139,15 @@ struct SkillDetailView: View {
                     PromptPlaygroundView(skill: skill, promptTemplate: document.editorContent)
                 }
 
+                #if !APP_STORE
                 if viewMode != .playground && !showingComposePanel && !skill.isReadOnly {
                     composeFloatingButton
                 }
+                #endif
             }
 
             // Inline compose panel
+            #if !APP_STORE
             if showingComposePanel {
                 ComposePanel(
                     content: $document.editorContent,
@@ -160,6 +165,7 @@ struct SkillDetailView: View {
                 // sent now would edit the wrong file.
                 .disabled(document.isLoadingContent)
             }
+            #endif
 
             Divider()
 
@@ -253,6 +259,15 @@ struct SkillDetailView: View {
             Text(document.saveErrorMessage)
         }
         .toolbar {
+            if !skill.isReadOnly && !skill.isRemote {
+                ToolbarItem {
+                    SkillUpdatesView(skill: skill, document: document, prepareForCheck: flushPendingSave) {
+                        reloadFromDisk()
+                        try? modelContext.save()
+                    }
+                    .id(skill.filePath)
+                }
+            }
             ToolbarItem {
                 Picker("Mode", selection: $viewMode) {
                     Label("Edit", systemImage: "pencil")
@@ -471,6 +486,7 @@ struct SkillDetailView: View {
         .background(Color.orange.opacity(0.12))
     }
 
+    #if !APP_STORE
     private var composeFloatingButton: some View {
         Image(systemName: "sparkles")
             .font(.system(size: 14, weight: .semibold))
@@ -482,6 +498,7 @@ struct SkillDetailView: View {
             .help("Compose with AI")
             .padding(16)
     }
+    #endif
 
     private func makeSkillGlobal() {
         do {
