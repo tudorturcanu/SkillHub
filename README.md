@@ -5,9 +5,13 @@
 [![Swift 6](https://img.shields.io/badge/Swift-6.0-orange.svg)](https://swift.org)
 [![Build Status](https://img.shields.io/badge/Build-Passing-brightgreen.svg)](#build--setup-instructions)
 
+> The app is called **SkillKit**. This repository is named SkillHub; they are the same project.
+
 **SkillKit** is the native macOS mission control for AI coding-agent skills, rules, system prompts, and custom instructions.
 
 Instead of letting your agent instructions stay scattered across Claude Code, Codex, Cursor, Windsurf, Copilot, Amp, OpenCode, Hermes, and custom developer directories, **SkillKit** gathers them into a unified, lightning-fast native interface. Search, edit, security-audit, group, and reuse your agent skills from a single source of truth.
+
+<img src="docs/skillkit.png" width="900" alt="SkillKit showing a library of skills and rules for Claude Code, Cursor, Windsurf and Codex, with one skill open in the Markdown editor">
 
 ---
 
