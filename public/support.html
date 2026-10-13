@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SkillKit - Support</title>
+    <style>
+        :root {
+            --bg-start: #0F172A;
+            --bg-end: #020617;
+            --card-bg: #111827;
+            --border: #1F2937;
+            --text-main: #E5E7EB;
+            --text-muted: #9CA3AF;
+            --accent: #635AF0;
+        }
+        body {
+            background: linear-gradient(180deg, var(--bg-start) 0%, var(--bg-end) 100%);
+            color: var(--text-main);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 24px;
+            min-height: 100vh;
+            box-sizing: border-box;
+            -webkit-font-smoothing: antialiased;
+        }
+        header { margin-bottom: 24px; text-align: center; }
+        h1 { color: var(--accent); font-size: 24px; font-weight: 700; margin: 0 0 8px 0; }
+        .subtitle { color: var(--text-muted); font-size: 14px; margin: 0; }
+        h2 { color: var(--accent); font-size: 18px; font-weight: 600; margin: 24px 0 12px 0; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+        p, li { color: var(--text-muted); font-size: 14px; margin: 0 0 12px 0; }
+        ul { padding-left: 20px; margin: 0 0 16px 0; }
+        .faq-item {
+            background-color: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+        .faq-question {
+            font-weight: 600;
+            color: var(--text-main);
+            margin-bottom: 8px;
+            font-size: 15px;
+        }
+        .faq-answer {
+            color: var(--text-muted);
+            margin: 0;
+            font-size: 14px;
+        }
+        .contact-card {
+            background-color: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+            margin-top: 32px;
+        }
+        .contact-card p { margin-bottom: 16px; }
+        .btn {
+            display: inline-block;
+            background-color: var(--accent);
+            color: #020617;
+            font-weight: 600;
+            text-decoration: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: opacity 0.2s ease;
+        }
+        .btn:hover { opacity: 0.9; }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>SkillKit Support</h1>
+        <p class="subtitle">Security Scanner & Linter for AI Skills</p>
+    </header>
+
+    <h2>Frequently Asked Questions</h2>
+    <div class="faq-item">
+        <div class="faq-question">What does SkillKit check for?</div>
+        <p class="faq-answer">SkillKit scans SKILL.md files for prompt injection vulnerabilities, unvalidated tool manifests, excessive permissions, and frontmatter formatting errors.</p>
+    </div>
+    <div class="faq-item">
+        <div class="faq-question">Does SkillKit upload my custom instructions?</div>
+        <p class="faq-answer">No. All security audits execute 100% locally on your Mac.</p>
+    </div>
+    <div class="faq-item">
+        <div class="faq-question">What is the scoring metric?</div>
+        <p class="faq-answer">SkillKit scores files from 0 to 100 based on the presence and severity of flagged patterns.</p>
+    </div>
+
+
+    <div class="contact-card">
+        <h3>Need further assistance?</h3>
+        <p>If you have any feedback, encounter an issue, or want to suggest a new feature, our support team is happy to help.</p>
+        <a href="mailto:alice.turcanu91@gmail.com?subject=SkillKit%20Support%20Request" class="btn">Email Support</a>
+    </div>
+</body>
+</html>
